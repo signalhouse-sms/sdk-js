@@ -1,0 +1,71 @@
+{
+  "name": "@signalhouse-sms/sdk",
+  "version": "1.5.1",
+  "description": "Signal House SDK for use with the Signal House platform",
+  "type": "module",
+  "main": "src/SignalHouseSDK.js",
+  "types": "./types/SignalHouseSDK.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/SignalHouseSDK.d.ts",
+      "default": "./src/SignalHouseSDK.js"
+    },
+    "./voice-browser": {
+      "types": "./types/domains/voice/browser/index.d.ts",
+      "default": "./src/domains/voice/browser/index.js"
+    },
+    "./webhooks": {
+      "types": "./types/webhooks/verifySignature.d.ts",
+      "default": "./src/webhooks/verifySignature.js"
+    }
+  },
+  "files": [
+    "src/",
+    "types/",
+    "skills/",
+    "scripts/install-skills.mjs",
+    "README.md"
+  ],
+  "bin": {
+    "signalhouse-skills": "scripts/install-skills.mjs"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install-skills.mjs",
+    "prepack": "npm run build:types",
+    "sync-skills": "node scripts/sync-skills.mjs",
+    "build:types": "tsc -p tsconfig.json",
+    "check:types": "tsc -p tsconfig.json --noEmit"
+  },
+  "agents": {
+    "skills": "./skills"
+  },
+  "author": "Signal House LLC",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/signalhouse-sms/sdk-js.git"
+  },
+  "bugs": {
+    "url": "https://github.com/signalhouse-sms/sdk-js/issues"
+  },
+  "homepage": "https://github.com/signalhouse-sms/sdk-js#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "axios": "^1.13.5"
+  },
+  "peerDependencies": {
+    "jssip": "^3.13.0"
+  },
+  "peerDependenciesMeta": {
+    "jssip": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.3",
+    "jssip": "^3.13.8",
+    "typescript": "^5.9.3"
+  }
+}

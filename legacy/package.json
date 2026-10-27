@@ -1,0 +1,46 @@
+{
+  "name": "@signalhousellc/sdk",
+  "version": "1.5.1",
+  "description": "Deprecated: moved to @signalhouse-sms/sdk. This package installs and re-exports it.",
+  "type": "module",
+  "main": "index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    },
+    "./voice-browser": {
+      "types": "./voice-browser.d.ts",
+      "default": "./voice-browser.js"
+    },
+    "./webhooks": {
+      "types": "./webhooks.d.ts",
+      "default": "./webhooks.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "voice-browser.js",
+    "voice-browser.d.ts",
+    "webhooks.js",
+    "webhooks.d.ts",
+    "warn.js",
+    "README.md"
+  ],
+  "dependencies": {
+    "@signalhouse-sms/sdk": "1.5.1"
+  },
+  "author": "Signal House LLC",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/signalhouse-sms/sdk-js.git",
+    "directory": "legacy"
+  },
+  "homepage": "https://github.com/signalhouse-sms/sdk-js#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}

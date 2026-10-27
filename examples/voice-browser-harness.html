@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>SignalHouse Voice Browser SDK — Device Harness</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { margin-bottom: 0.25rem; }
+    .subtitle { color: #666; margin-bottom: 1.5rem; font-size: 0.9rem; }
+    .row { display: flex; gap: 0.5rem; align-items: center; margin: 0.5rem 0; flex-wrap: wrap; }
+    label { font-weight: 600; min-width: 110px; }
+    input[type="text"], textarea { flex: 1; min-width: 280px; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; font-size: 0.85rem; }
+    textarea { min-height: 50px; resize: vertical; }
+    button { padding: 0.5rem 1rem; cursor: pointer; border: 1px solid #444; background: #fff; border-radius: 4px; font-weight: 600; }
+    button:hover { background: #f0f0f0; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 6px; overflow-x: auto; height: 460px; overflow-y: auto; font-size: 0.82rem; }
+    .ok { color: #22c55e; }
+    .err { color: #ef4444; }
+    .warn { color: #eab308; }
+    .info { color: #60a5fa; }
+    .dim { color: #888; }
+    .ev { color: #c084fc; }
+    .status { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600; font-size: 0.85rem; }
+    .status.idle { background: #f0f0f0; color: #666; }
+    .status.live { background: #22c55e; color: white; }
+    .status.dead { background: #ef4444; color: white; }
+    .section { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #ddd; }
+  </style>
+
+  <!-- Resolve the bare "jssip" specifier to a CDN. Device.js does `import JsSIP from "jssip"`;
+       without this map the browser doesn't know how to find the module. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "jssip": "https://cdn.skypack.dev/jssip"
+    }
+  }
+  </script>
+</head>
+<body>
+  <h1>SignalHouse Voice Browser SDK — Device Harness</h1>
+  <p class="subtitle">Exercises the new <code>Device</code> + <code>Call</code> classes from <code>@signalhouse-sms/sdk/voice-browser</code>. End-to-end: mint token → register → dial PSTN.</p>
+
+  <div class="row">
+    <label>API host:</label>
+    <input type="text" id="apiHost" value="https://v2.signalhouse.io" />
+  </div>
+  <div class="row">
+    <label>JWT:</label>
+    <textarea id="jwt" placeholder="Paste a valid JWT"></textarea>
+  </div>
+  <div class="row">
+    <label>Identity:</label>
+    <input type="text" id="identity" value="sdk-harness" />
+  </div>
+  <div class="row">
+    <label>WSS override:</label>
+    <input type="text" id="wssOverride" value=""
+           placeholder="leave blank to use whatever /voice/tokens returns" />
+  </div>
+  <div class="row">
+    <label>Status:</label>
+    <span id="status" class="status idle">idle</span>
+  </div>
+  <div class="row">
+    <button id="btnMint" disabled>1. Mint Token</button>
+    <button id="btnRegister" disabled>2. Register</button>
+    <button id="btnUnregister" disabled>3. Unregister</button>
+    <button id="btnClear">Clear log</button>
+  </div>
+
+  <div class="row section">
+    <label>Dial to:</label>
+    <input type="text" id="dialTarget" placeholder="+15551234567" />
+  </div>
+  <div class="row">
+    <label>From override:</label>
+    <input type="text" id="fromOverride" placeholder="+19153374770 (account-owned DID)" />
+    <button id="btnDial" disabled>Dial Out</button>
+    <button id="btnHangup" disabled>Hangup</button>
+  </div>
+
+  <pre id="log"></pre>
+
+  <script type="module">
+    // Import the SDK directly from local source; apps import it from the package's voice-browser subpath.
+    import { Device } from "../src/domains/voice/browser/index.js";
+
+    const logEl    = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+    const $        = (id) => document.getElementById(id);
+
+    function log(msg, cls = '') {
+      const ts = new Date().toISOString().substring(11, 23);
+      const line = document.createElement('div');
+      line.className = cls;
+      line.textContent = `[${ts}] ${msg}`;
+      logEl.appendChild(line);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    function setStatus(text, cls) {
+      statusEl.className = 'status ' + cls;
+      statusEl.textContent = text;
+    }
+
+    $('btnClear').onclick = () => { logEl.innerHTML = ''; };
+
+    let tokenResponse = null;
+    let device = null;
+    let currentCall = null;
+
+    log('Harness ready. Paste JWT and click Mint Token.', 'dim');
+    $('btnMint').disabled = false;
+
+    $('btnMint').onclick = async () => {
+      const apiHost = $('apiHost').value.trim();
+      const jwt = $('jwt').value.trim();
+      const identity = $('identity').value.trim() || 'sdk-harness';
+      if (!jwt) { log('No JWT pasted.', 'err'); return; }
+
+      log(`POST ${apiHost}/voice/tokens (identity=${identity})`, 'info');
+      $('btnMint').disabled = true;
+      try {
+        const r = await fetch(`${apiHost}/voice/tokens`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identity, ttl: 1800 }),
+        });
+        const text = await r.text();
+        log(`  ← ${r.status}`, r.ok ? 'ok' : 'err');
+        if (!r.ok) { log(`  body: ${text.substring(0, 300)}`, 'err'); $('btnMint').disabled = false; return; }
+        tokenResponse = JSON.parse(text);
+
+        // Apply WSS override if user supplied one — useful when the
+        // server's stored URL doesn't match what's reachable from here.
+        const wssOverride = $('wssOverride').value.trim();
+        if (wssOverride) {
+          log(`  WSS override: ${wssOverride}`, 'dim');
+          tokenResponse.sip_credentials.wss_url = wssOverride;
+        }
+
+        log(`  identity: ${tokenResponse.identity}`, 'ok');
+        log(`  expires:  ${tokenResponse.expires_at}`, 'dim');
+        log(`  domain:   ${tokenResponse.sip_credentials.domain}`, 'dim');
+        log(`  wss_url:  ${tokenResponse.sip_credentials.wss_url}`, 'dim');
+        log('Token minted. Click Register to construct the Device.', 'ok');
+        $('btnRegister').disabled = false;
+      } catch (e) {
+        log(`fetch error: ${e.message}`, 'err');
+      } finally {
+        $('btnMint').disabled = false;
+      }
+    };
+
+    $('btnRegister').onclick = async () => {
+      if (!tokenResponse) { log('No token. Mint first.', 'err'); return; }
+      $('btnRegister').disabled = true;
+      log('Constructing Device(tokenResponse) ...', 'info');
+
+      try {
+        device = new Device(tokenResponse, { registerExpires: 600 });
+
+        device.on('connecting',          ()  => log('Device: connecting (opening WSS) ...', 'ev'));
+        device.on('connected',           ()  => log('Device: WSS connected', 'ev'));
+        device.on('disconnected',        (e) => log(`Device: disconnected (${e?.reason || 'no reason'})`, 'warn'));
+        device.on('registered',          ()  => { log('Device: REGISTERED', 'ok'); setStatus('REGISTERED', 'live'); });
+        device.on('unregistered',        ()  => { log('Device: unregistered', 'dim'); setStatus('not registered', 'dead'); });
+        device.on('registrationFailed', (e)  => log(`Device: REGISTRATION FAILED — ${e?.cause}`, 'err'));
+
+        device.on('incoming', (call) => {
+          log('--- INCOMING INVITE ---', 'ok');
+          log(`  From:        ${call.from}`, 'info');
+          log(`  To:          ${call.to}`, 'info');
+          log(`  Call-ID:     ${call.id || '(?)'}`, 'dim');
+          log(`  initiatorId: ${call.initiatorId || '(none)'}`, call.initiatorId ? 'ok' : 'dim');
+          log(`  callUuid:    ${call.callUuid || '(none)'}`, 'dim');
+          for (const [k, v] of Object.entries(call.headers || {})) {
+            if (!['X-SignalHouse-Initiator', 'X-Call-UUID'].includes(k)) log(`  ${k}: ${v}`, 'dim');
+          }
+          // For the harness: accept incoming so we can verify the full flow.
+          // A real host app would decide based on initiatorId or user UX.
+          log('  Auto-accepting (harness behavior)...', 'warn');
+          currentCall = call;
+          wireCallEvents(call);
+          call.accept().catch((err) => log(`  accept failed: ${err.message}`, 'err'));
+          $('btnHangup').disabled = false;
+        });
+
+        log('Calling device.register() ...', 'info');
+        await device.register();
+        $('btnUnregister').disabled = false;
+        $('btnDial').disabled = false;
+      } catch (e) {
+        log(`register error: ${e.message}`, 'err');
+        console.error(e);
+        $('btnRegister').disabled = false;
+      }
+    };
+
+    $('btnUnregister').onclick = async () => {
+      if (!device) return;
+      log('device.unregister() ...', 'info');
+      $('btnUnregister').disabled = true;
+      try { await device.unregister(); }
+      catch (e) { log(`unregister error: ${e.message}`, 'err'); }
+    };
+
+    $('btnDial').onclick = async () => {
+      if (!device) return;
+      const to = $('dialTarget').value.trim();
+      if (!to) { log('Enter a destination number first.', 'err'); return; }
+      const from = $('fromOverride').value.trim() || undefined;
+
+      log(`device.connect({ to: ${to}, from: ${from || '(default)'} }) ...`, 'info');
+      $('btnDial').disabled = true;
+      try {
+        currentCall = await device.connect({ to, from });
+        wireCallEvents(currentCall);
+        log(`Call constructed (id=${currentCall.id || '(?)'} status=${currentCall.status})`, 'ok');
+        $('btnHangup').disabled = false;
+      } catch (e) {
+        log(`connect error: ${e.message}`, 'err');
+        console.error(e);
+        $('btnDial').disabled = false;
+      }
+    };
+
+    $('btnHangup').onclick = () => {
+      if (currentCall) {
+        log('currentCall.hangup()', 'info');
+        currentCall.hangup();
+      }
+    };
+
+    function wireCallEvents(call) {
+      call.on('progress', (e) => {
+        const code = e.response?.status_code;
+        log(`Call: < ${code || '???'} ${e.response?.reason_phrase || '(progress)'}`, 'info');
+      });
+      call.on('accepted',  ()  => log('Call: ACCEPTED (200 OK)', 'ok'));
+      call.on('confirmed', ()  => log('Call: confirmed (ACK exchanged, media flowing)', 'ok'));
+      call.on('track',     (e) => log(`Call: remote ${e.track.kind} track received`, 'ok'));
+      call.on('ended',     (e) => {
+        log(`Call: ended (${e?.cause || 'normal'})`, 'dim');
+        $('btnHangup').disabled = true;
+        $('btnDial').disabled = false;
+        currentCall = null;
+      });
+      call.on('failed', (e) => {
+        log(`Call: FAILED — cause=${e?.cause} status=${e?.statusCode || '?'} reason="${e?.reason || ''}"`, 'err');
+        $('btnHangup').disabled = true;
+        $('btnDial').disabled = false;
+        currentCall = null;
+      });
+    }
+  </script>
+</body>
+</html>

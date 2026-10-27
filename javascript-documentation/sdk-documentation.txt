@@ -1,0 +1,879 @@
+================================================================================
+                    SIGNALHOUSE JAVASCRIPT SDK DOCUMENTATION
+================================================================================
+
+INSTALLATION
+--------------------------------------------------------------------------------
+  npm install @signalhouse-sms/sdk
+
+
+INITIALIZATION
+--------------------------------------------------------------------------------
+  import { SignalHouseSDK } from "@signalhouse-sms/sdk";
+
+  const signalHouse = new SignalHouseSDK({
+    apiKey: "your-api-token",
+    baseUrl: "https://v2.signalhouse.io",
+  });
+
+  Required options:
+    - apiKey   (string)  JWT token or service user token for authentication
+    - baseUrl  (string)  API base URL
+
+  The SDK throws an error at initialization if apiKey or baseUrl is missing.
+
+
+PER-REQUEST TOKEN OVERRIDE
+--------------------------------------------------------------------------------
+  Every SDK method accepts an "options" object with a "token" property to
+  override the default apiKey for that single request.
+
+  Example:
+    const response = await signalHouse.messages.getMessages({
+      page: 1,
+      limit: 10,
+      options: { token: "user-specific-jwt-token" },
+    });
+
+  The per-request token takes precedence over the apiKey provided at
+  initialization. The original apiKey remains unchanged.
+
+
+CUSTOM HEADERS
+--------------------------------------------------------------------------------
+  Pass additional headers via the options.headers property:
+
+  Example:
+    const response = await signalHouse.numbers.getPhoneNumbers({
+      page: 1,
+      limit: 20,
+      options: {
+        headers: {
+          "X-Request-Id": "req_abc123",
+        },
+      },
+    });
+
+
+IDEMPOTENT REQUESTS
+--------------------------------------------------------------------------------
+  Pass options.idempotencyKey to make a create, update or delete safe to
+  retry. The SDK sends it as the Idempotency-Key header. A retry with the same
+  key and the same request replays the first response, marked with the
+  response header Idempotent-Replayed: true, instead of running the request
+  again.
+
+  - Use a new key (a UUID is recommended) for each new operation, and reuse
+    it only to retry that exact request.
+  - Keys are scoped to the authenticated user and kept for 24 hours.
+  - Reusing a key for a different request returns 422; retrying while the
+    first request is still running returns 409 with Retry-After.
+  - The SDK never creates a key for you. GET requests ignore it, and the
+    Voice service does not support it.
+
+  Example:
+    const response = await signalHouse.subgroups.createSubgroup({
+      subgroupData: { groupId: "G0000001", subgroupName: "Support" },
+      options: { idempotencyKey: crypto.randomUUID() },
+    });
+
+
+================================================================================
+                          DOMAIN METHOD REFERENCE
+================================================================================
+
+AUTH  (signalHouse.auth)
+--------------------------------------------------------------------------------
+  login({ email, password })
+    Login with email and password.
+
+  resetPassword({ userId, newPassword })
+    Reset a user's password.
+
+  getAuthHistory({ groupId, userId, page, limit })
+    Get token login history.
+
+  logoutAll()
+    Log out all other users in the caller's active group.
+
+
+BILLING  (signalHouse.billing)
+--------------------------------------------------------------------------------
+  getTransactionHistory({ groupId, subgroupId, brandId, campaignId,
+                          entryType, transactionType, startDate, endDate })
+    Get transaction history with filters.
+
+  getWallet({ groupId })
+    Get wallet balance and settings.
+
+  updateWallet({ groupId, autoRechargeEnabled, autoRechargeThreshold,
+                 autoRechargeToAmount, primaryPaymentMethodId,
+                 secondaryPaymentMethodId })
+    Update wallet auto-recharge settings.
+
+  getPaymentMethods({ groupId })
+    List saved payment methods.
+
+  addFunds({ groupId, amount, paymentMethodId })
+    Add funds to wallet. Amount is in microdollars (1,000,000 = $1.00).
+
+  addPaymentMethod({ groupId, paymentMethodId })
+    Save a new payment method.
+
+  removePaymentMethod({ groupId, paymentMethodId })
+    Remove a saved payment method.
+
+  getInvoiceDetails({ groupId, subgroupId, startDate, endDate })
+    Get invoice/billing details.
+
+  getFees({ groupId })
+    Get fee schedule for the group.
+
+
+BRANDS  (signalHouse.brands)
+--------------------------------------------------------------------------------
+  getBrands({ id, subgroupId, groupId, page, limit, status, registrationType,
+              currentTollFreeCarrier })
+    List brands with filters. Staff roles listing all brands (no id/subgroupId/groupId) can also
+    pass search, sortBy, sortOrder, entityType, ein, email, referenceId, groupIds, createdFrom,
+    createdTo and excludeDeleted; with both page and limit that list returns
+    { data, total, page, limit, totalPages }.
+    currentTollFreeCarrier: with subgroupId or groupId, true returns only toll-free brands
+    that a new toll-free campaign in that group can use.
+
+  createBrand({ brandData })
+    Create a new 10DLC brand.
+
+  getBusinessVerification({ groupId, subgroupId })
+    Get a group's business verification: whether its toll-free brands need one, its status
+    and the submitted details. Sends a GET to /brand/business-verification/:groupId, with
+    ?subgroupId= added only when subgroupId is given.
+    Some groups verify each subgroup's business separately: a platform whose subgroups are
+    separate businesses, set up by Signal House. For those groups subgroupId is required, and
+    the response is that subgroup's own business verification. For any other group, its one
+    business verification covers every subgroup: subgroupId is optional, must be one of the
+    group's subgroups, and is otherwise ignored.
+    Returns 200: { groupId, subgroupId?, required, status, details, submittedAt, reviewedAt,
+    rejectionReason }. subgroupId is present only when the business verification belongs to
+    one subgroup. status is NOT_STARTED, SUBMITTING, IN_REVIEW, VERIFIED or NEEDS_CHANGES;
+    rejectionReason says why it needs changes, or is null. When required is true and status
+    is NOT_STARTED, submit it before creating the first toll-free brand it covers.
+    Returns 400 when the group verifies each subgroup's business separately and subgroupId
+    is missing, and 404 when the subgroup is not in the group.
+
+  submitBusinessVerification({ groupId, subgroupId, details })
+    Submit or update a group's business verification, or one subgroup's in a group that
+    verifies each subgroup's business separately. subgroupId works as it does for
+    getBusinessVerification, and the subgroup must also be active. Allowed when it is not
+    started or needs changes. Review usually takes 1–2 business days; the toll-free brands it
+    covers stay pending until it is verified. Sends a PUT to
+    /brand/business-verification/:groupId, with ?subgroupId= added only when subgroupId is
+    given, and details as the body.
+    details: { businessName, businessType, industry, registrationType, registrationNumber,
+               website, street, street2?, city, state, postalCode, country,
+               representative: { firstName, lastName, email, phone, jobTitle, jobLevel } }
+    country is "US" or "CA"; state is a 2-letter state or province code; phone is E.164.
+    The BusinessVerificationDetails typedef lists the accepted businessType, industry,
+    registrationType and jobLevel values.
+    Returns 202: the getBusinessVerification shape, with status SUBMITTING.
+    Returns 400 when the group verifies each subgroup's business separately and subgroupId
+    is missing, or when the subgroup is inactive, and 404 when the subgroup is not in the
+    group.
+
+  updateBrand({ brandId, brandData })
+    Update brand information.
+
+  deleteBrand({ brandId })
+    Delete (soft) a brand.
+
+  transferBrand({ subgroupId, brandIds })
+    Transfer brands to a different subgroup.
+
+  getExternalVetting({ brandId })
+    Get external vetting info for a brand.
+
+  createExternalVetting({ brandId })
+    Submit brand for external vetting.
+
+  revetBrand({ brandId })
+    Resubmit brand for vetting.
+
+  getAppealHistory({ brandId })
+    List identity status appeals for a brand.
+
+  submitAppeal({ brandId, appealCategories, explanation, file })
+    Submit a brand identity status appeal with supporting documentation.
+    Uses multipart/form-data automatically.
+    appealCategories: array of strings (VERIFY_TAX_ID, VERIFY_NON_PROFIT, VERIFY_GOVERNMENT)
+    explanation: string (max 1024 chars)
+    file: binary (supported: .jpg, .jpeg, .png, .bmp, .raw, .tiff, .pdf, .docx, .htm, .odt, .rtf, .txt, .xml)
+
+
+CAMPAIGNS  (signalHouse.campaigns)
+--------------------------------------------------------------------------------
+  getCampaigns({ id, brandId, subgroupId, groupId, page, limit, status })
+    List campaigns with filters.
+
+  createCampaign({ campaignData })
+    Create a new 10DLC campaign.
+
+  updateCampaign({ campaignId, campaignData })
+    Update campaign details.
+
+  deleteCampaign({ campaignId })
+    Delete (soft) a campaign.
+
+  appealDcaRejection({ campaignId, options })
+    Appeal a DCA-rejected campaign. The campaign must be in DCA_REJECTED status.
+    Sends a POST to /campaign/appealDcaRejection/:campaignId.
+    Required body: reason (string, max 2048 chars)
+    Returns 202: { Message: "Campaign DCA appeal has been queued for processing" }
+
+  nudgeDcaForCampaign({ campaignId, options })
+    Nudge a connectivity partner to prioritize review of a campaign in PENDING_DCA_APPROVAL status.
+    Sends a POST to /campaign/nudge/:campaignId.
+    No request body required.
+    Returns 200: { message: "Nudge successful" }
+
+
+DNC  (signalHouse.dnc.admin — enableAdmin only)
+--------------------------------------------------------------------------------
+  The attested "Disable Automated Opt-Out" setting is signed inside a
+  Signal House app (the portal, or the GHL / Shopify apps running as
+  signalhouse_api), not by API consumers, so every method lives under the
+  admin namespace. The API refuses the customer "api" (API key) role.
+
+  admin.getCurrentAttestation({ groupId })
+    Current Opt-Out Handling Attestation text with the account placeholders
+    filled, plus the version and templateSha256 a signature must echo back.
+  admin.signAttestation({ version, templateSha256, checkboxAcknowledged,
+                          scrolledToEnd, customerLegalName, signerName,
+                          signerTitle, groupId, signerEmail, signerUserId,
+                          signedVia, signerIpAddress, signerUserAgent })
+    E-sign. A portal login signs its own account (identity from the
+    session). A signalhouse_api app passes groupId plus the signer it
+    authenticated (signerEmail required; signedVia e.g. "ghl", "shopify").
+  admin.revokeAttestation({ groupId })
+    Revoke the active attestation and re-enable automated opt-out.
+    groupId is for signalhouse_api apps.
+  admin.getAttestation({ groupId })
+    Attestation state: automatedOptOutDisabled, active record, history,
+    requiresResign, resignDeadline.
+  admin.listAttestations({ status, groupId, page, limit })   (staff)
+  admin.getAttestationById({ id })                            (staff)
+  admin.revokeAttestationById({ id, reasonCode, reason })     (staff)
+
+
+GROUPS  (signalHouse.groups)
+--------------------------------------------------------------------------------
+  getGroup({ id })
+    Get group details by ID.
+
+  updateGroup({ id, groupData })
+    Update group information.
+
+
+LANDINGS  (signalHouse.landings)
+--------------------------------------------------------------------------------
+  getLandings({ landingId })
+    Get a landing page by ID.
+
+  getLandingByBrandId({ brandId })
+    Get landing page associated with a brand.
+
+  createLanding({ landingData, file })
+    Create a landing page with optional image upload.
+    Uses multipart/form-data automatically.
+
+  updateLanding({ landingId, landingData, file })
+    Update a landing page with optional image upload.
+    Uses multipart/form-data automatically.
+
+  deleteLanding({ landingId })
+    Delete a landing page.
+
+
+MESSAGES  (signalHouse.messages)
+--------------------------------------------------------------------------------
+  getMessages({ id, campaignId, brandId, subgroupId, groupId, status,
+                direction, messageType, carrier, sentimentLabel, errorCode,
+                startDate, endDate, sortField, sortOrder, page, limit })
+    List messages with extensive filters.
+
+  getAnalytics({ groupId, subgroupId, brandId, campaignId, registrationId,
+                 phoneNumber, carrier, startDate, endDate })
+    Get aggregated message analytics.
+
+  sendSMS({ senderPhoneNumber, recipientPhoneNumbers, messageBody,
+            statusCallbackUrl, enableShortlink })
+    Send an SMS message.
+    Required: senderPhoneNumber, recipientPhoneNumbers, messageBody
+
+  sendMMS({ senderPhoneNumber, recipientPhoneNumbers, messageBody,
+            mediaUrls, statusCallbackUrl, enableShortlink,
+            enableCompression, images })
+    Send an MMS message with media attachments.
+    Uses multipart/form-data automatically.
+    Required: senderPhoneNumber, recipientPhoneNumbers, messageBody
+
+  sendGroupMessage({ senderPhoneNumber, recipientPhoneNumbers, messageBody,
+                     mediaUrls, statusCallbackUrl, enableShortlink,
+                     enableCompression, images })
+    Send a group MMS message.
+    Uses multipart/form-data automatically.
+    Required: senderPhoneNumber, recipientPhoneNumbers, messageBody
+
+  carrierIdLookup({ phoneNumber })
+    Look up the carrier for a phone number.
+    Always performs a fresh lookup (not cached). Billed per request.
+    Required: phoneNumber (10+ digits, no + prefix)
+    Returns: { phoneNumber, carrier, carrierFamily, carrierRegion, ported, type, degradedConfidence, cost }
+
+
+TEMPLATES  (signalHouse.templates)
+--------------------------------------------------------------------------------
+  Channel-generic templates under /template (today the only channel is
+  "rcs"). Each template has an immutable published version and at most one
+  editable draft. Every call takes groupId. Writes apply directly (last write
+  wins); 409 codes are TEMPLATE_ARCHIVED, TEMPLATE_NAME_TAKEN, NO_DRAFT
+  (publish with no draft) and DRAFT_CHANGED (publish only: the draft changed
+  while it was being published; publish again). 404 while RCS is disabled
+  for the environment. Bodies are the raw
+  RcsTemplateBody { channel: "rcs", contentFormat: "rcs.blocks.v1",
+  content: { blocks }, variables, defaults, fallback }; the SDK never converts them.
+  version selectors are a positive integer, "draft" or "published"; omitted
+  means the published version, else the draft.
+
+  create({ groupId, name, tag, body })
+    Create a template with draft version 1 (201). Returns { head, version }.
+    Required: groupId, name, body
+
+  list({ groupId, state, channel, tag, search, sortBy,
+         sortOrder, page, limit })
+    List templates. state: DRAFT | PUBLISHED | ARCHIVED; sortBy: name |
+    createdAt | updatedAt. Returns { data, total, page, limit }.
+
+  get({ templateId, groupId, version })
+    Get a template head with one version. Returns { head, version }.
+
+  update({ templateId, groupId, name, tag, body })
+    Rename, retag or replace the draft body. tag: null clears it, omitted
+    leaves it unchanged.
+
+  publish({ templateId, groupId })
+    Publish the current draft. No draft returns 409 NO_DRAFT; a draft changed
+    mid-publish returns 409 DRAFT_CHANGED (publish again); an incomplete
+    draft returns 400 TEMPLATE_INVALID with { errors, warnings }.
+
+  archive({ templateId, groupId })
+    Archive a template. Returns the template head.
+
+  versions({ templateId, groupId, page, limit })
+    List versions without bodies. Returns { data, total, page, limit }.
+
+  validate({ templateId, groupId, body, version })
+    Validate an unsaved body or a stored version; writes nothing. Pass exactly
+    one of body or version (the SDK throws otherwise). Returns { valid,
+    contentHash, validatorVersion, errors, warnings }.
+
+  capabilities({ groupId, channel, provider })
+    Allowed blocks, actions, variable types, limits and upload constraints.
+    provider (infobip | sinch) adds that provider's limits and unsupported features.
+
+  uploadMedia({ groupId, file, fileName })
+    Upload a Blob/File; returns { mediaId, url, bytes, mimeType, kind, width,
+    height, ... } (201). Use url in a template body. 503 when media storage is
+    not configured. Uses multipart/form-data automatically.
+    Required: groupId, file
+
+  Pass options.idempotencyKey on create, update, publish, archive and
+  uploadMedia to make a retry safe (see IDEMPOTENT REQUESTS).
+
+
+NOTIFICATIONS  (signalHouse.notifications)
+--------------------------------------------------------------------------------
+  getNotifications({ id, groupId, page, limit, status, eventTypes })
+    Get notifications with filters.
+
+  updateNotificationStatus({ ids, status })
+    Mark notifications as READ or UNREAD.
+
+  deleteNotification({ id })
+    Delete a notification.
+
+
+NUMBERS  (signalHouse.numbers)
+--------------------------------------------------------------------------------
+  getPhoneNumbers({ phoneNumber, campaignId, registrationId, brandId,
+                    subgroupId, groupId, currentTollFreeCarrier, page, limit })
+    List your phone numbers with filters.
+    registrationId: filter to numbers provisioned under this registration.
+    currentTollFreeCarrier: with subgroupId or groupId, true returns only toll-free numbers
+    that a new toll-free campaign in that group can use.
+
+  getNumberHealth({ phoneNumber })
+    Get the health score, the same one the portal shows, (1–10) for an owned phone number.
+    Returns sevenDay and thirtyDay breakdowns matching the portal.
+
+  getAvailablePhoneNumbers({ smsEnabled, mmsEnabled, voiceEnabled, country,
+                             state, npa, nxx, phoneNumber, limit, page })
+    Search available numbers for purchase.
+
+  purchasePhoneNumber({ phoneNumbers, subgroupId })
+    Purchase one or more phone numbers.
+
+  updatePhoneNumber({ phoneNumber, updateData })
+    Update phone number details (e.g., friendly name).
+
+  getCallerName({ phoneNumber })
+    Get a number's outbound caller name (CNAM), its source and eligibility.
+
+  setCallerName({ phoneNumber, name, brandId? })
+    Set a number's caller name. The name may only remove characters from the
+    registered name of the number's brand; brandId is only for numbers with no campaign.
+
+  deleteCallerName({ phoneNumber })
+    Remove a number's own caller name (falls back to auto-apply if it is on).
+
+  assignPhoneNumberToCampaign({ campaignId, phoneNumbers })
+    Assign numbers to a campaign.
+
+  unassignPhoneNumbersFromCampaigns({ phoneNumbers })
+    Unassign numbers from their campaigns.
+
+  deletePhoneNumbers({ phoneNumbers })
+    Release phone numbers.
+
+  transferPhoneNumbers({ phoneNumbers, newSubgroupId })
+    Transfer unassigned numbers between subgroups.
+
+  searchNpaNxx({ country, state, city, npa, nxx })
+    Search NPA/NXX area code lookup data.
+
+  lookupLocations({ entries })
+    Batch lookup city/state for NPA/NXX pairs.
+    entries: [{ npa: "213", nxx: "555" }, ...]
+
+  portInPhoneNumber({ numberData, options })
+    Submit a port-in request (POST /number/portin).
+    numberData: object containing port-in request data (required).
+
+  getPortRequests({ groupId, phoneNumber, status, page, limit, excludeDocuments, options })
+    Get port-in requests with optional filters (GET /number/portin).
+    All parameters are optional. excludeDocuments: true leaves signatureUrl
+    and billingUrl out of each request.
+
+
+SHORTLINKS  (signalHouse.shortlinks)
+--------------------------------------------------------------------------------
+  getShortlink({ shortlinkId, messageId, phoneNumber, campaignId, brandId,
+                 subgroupId, groupId, page, limit })
+    Get shortlink details and click data.
+
+  getShortlinkRedirect({ shortlinkId })
+    Get the redirect URL for a shortlink.
+
+  getOptOut({ code })
+    Public, no auth. GET /shortlink/optout/:code for the alphanumeric-sender
+    opt-out link (sihou.io/o/{code}): { code, senderName, maskedRecipient,
+    optedOut }; 404 for an unknown code.
+
+  confirmOptOut({ code })
+    Public, no auth. POST /shortlink/optout/:code (no body) opts the recipient
+    out; idempotent. Returns { code, senderName, maskedRecipient, optedOut: true };
+    404 for an unknown code.
+
+
+SUBGROUPS  (signalHouse.subgroups)
+--------------------------------------------------------------------------------
+  getSubgroups({ id, groupId, page, limit })
+    List subgroups with filters.
+
+  createSubgroup({ subgroupData })
+    Create a new subgroup.
+    subgroupData may include optional carrierIdFamily and carrierIdRegion.
+    Setting carrierIdFamily or carrierIdRegion requires signalhouse_api,
+    signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
+
+  updateSubgroup({ id, updateData })
+    Update subgroup details.
+    updateData may include optional carrierIdFamily and carrierIdRegion.
+    Setting carrierIdFamily or carrierIdRegion requires signalhouse_api,
+    signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
+    updateData may also include cnamAutoApply (boolean) and cnamBrandId (string
+    or null): caller name auto-apply and the default caller-ID brand for numbers
+    with no campaign (a verified brand in the subgroup).
+
+  deleteSubgroup({ id })
+    Delete (deactivate) a subgroup.
+
+
+SUBSCRIPTIONS  (signalHouse.subscriptions)
+--------------------------------------------------------------------------------
+  getSubscriptions({ groupId, onlyActive })
+    Get subscription history for a group.
+
+  subscribe({ groupId, templateId })
+    Subscribe a group to a plan.
+
+  unsubscribe({ groupId })
+    Unsubscribe a group from their current plan.
+
+
+USERS  (signalHouse.users)
+--------------------------------------------------------------------------------
+  getUsers({ id, groupId, userType })
+    List users with filters.
+
+  createUser({ data })
+    Create a new user.
+
+  createServiceUser({ data })
+    Create a service user (API key). Optional allowedIps (IPs/CIDRs) and
+    allowedCountries (ISO 3166-1 alpha-2) restrict where a customer key is accepted from.
+    allowedDestinationCountries (ISO 3166-1 alpha-2) limits the countries it can send
+    messages to; a send to any other country is rejected with 403 DESTINATION_COUNTRY_NOT_ALLOWED.
+
+  updateUser({ id, data })
+    Update user information. For a customer API key, allowedIps / allowedCountries /
+    allowedDestinationCountries replace its restrictions ([] removes one); needs an interactive admin/developer session.
+
+  deleteUser({ id })
+    Delete (deactivate) a user.
+
+  getNotificationPreferences({ id })
+    Get user notification preferences.
+
+  updateNotificationPreferences({ id, notificationPreferences })
+    Update notification preferences.
+
+
+WEBHOOKS  (signalHouse.webhooks)
+--------------------------------------------------------------------------------
+  getWebhooks({ id, groupId, endpointType, phoneNumber, page, limit })
+    List webhooks with filters.
+
+  createWebhook({ webhookData })
+    Create a new webhook.
+
+  updateWebhook({ id, updateData })
+    Update webhook configuration, including authType, apiHeaderPrefix and credentials
+    (changed in place). Responses carry hasSigningSecret/hasCredentials, never secrets.
+
+  rotateWebhookSecret({ id, graceSeconds })
+    Rotate the signing secret (or create a first one for an older webhook). Returns the new
+    signingSecret once; the old secret keeps working for graceSeconds (default 24h, max 7 days).
+
+  deleteWebhook({ id })
+    Delete a webhook.
+
+  verifyWebhookSignature({ rawBody, headers, secret | secrets, toleranceMs })
+    Node only: import from "@signalhouse-sms/sdk/webhooks". Verifies a delivery's
+    X-SignalHouse-Signature(-V1) against your secret(s) with a 5-minute timestamp window.
+    Returns { valid, reason }.
+
+
+================================================================================
+                          MULTIPART REQUESTS
+================================================================================
+
+  The following methods use multipart/form-data automatically:
+
+    - messages.sendMMS(...)
+    - messages.sendGroupMessage(...)
+    - landings.createLanding(...)
+    - landings.updateLanding(...)
+    - brands.submitAppeal(...)
+    - templates.uploadMedia(...)
+
+  You do not need to construct FormData manually. Pass parameters as a normal
+  object and the SDK builds the form data internally.
+
+
+================================================================================
+                          QUERY STRING HELPERS
+================================================================================
+
+  The SDK automatically constructs query strings from method parameters.
+  Any parameter with an undefined value is excluded, so you only need to
+  pass the filters you care about.
+
+  Example:
+    // Only sends ?status=FAILED&page=1&limit=50
+    const messages = await signalHouse.messages.getMessages({
+      status: "FAILED",
+      groupId: undefined,   // excluded
+      direction: undefined, // excluded
+      page: 1,
+      limit: 50,
+    });
+
+
+================================================================================
+                             VALIDATION
+================================================================================
+
+  The SDK validates required parameters client-side before making any HTTP
+  request. If a required parameter is missing, null, or an empty string,
+  the SDK throws a SignalHouseValidationError immediately -- no network
+  request is made.
+
+  Validation errors have:
+    - name:    "SignalHouseValidationError"
+    - message: "Missing required parameter: <fieldName>"
+    - status:  400
+
+
+================================================================================
+                           ERROR HANDLING
+================================================================================
+
+  The SDK uses a standardized response format. Errors are NOT thrown --
+  they are returned as response objects with success: false.
+
+  Success response:
+    { success: true, data: { ... }, status: 200 }
+
+  Error response:
+    { success: false, error: "Error message", status: 400 }
+
+  Error types summary:
+
+    Source                    Behavior                         How to Handle
+    -----------------------------------------------------------------------
+    Missing required param    Throws SignalHouseValidationError try/catch
+    HTTP 4xx/5xx from API     Returns { success: false, ... }  Check response.success
+    Network failure           Returns { success: false, ... }  Check response.success
+
+
+================================================================================
+                       COMPLETE INTEGRATION EXAMPLE
+================================================================================
+
+  import express from "express";
+  import { SignalHouseSDK } from "@signalhouse-sms/sdk";
+
+  const app = express();
+  app.use(express.json());
+
+  const signalHouse = new SignalHouseSDK({
+    apiKey: process.env.SIGNALHOUSE_API_KEY,
+    baseUrl: "https://v2.signalhouse.io",
+  });
+
+  // Send an SMS notification
+  app.post("/api/notify", async (req, res) => {
+    const { recipientNumber, message, senderNumber } = req.body;
+
+    try {
+      const response = await signalHouse.messages.sendSMS({
+        senderPhoneNumber: senderNumber,
+        recipientPhoneNumbers: [recipientNumber],
+        messageBody: message,
+        statusCallbackUrl: `${process.env.BASE_URL}/api/delivery-status`,
+      });
+
+      if (!response.success) {
+        return res.status(response.status || 500).json({ error: response.error });
+      }
+
+      return res.json({
+        messageId: response.data.messageId,
+        status: response.data.status,
+      });
+    } catch (error) {
+      if (error.name === "SignalHouseValidationError") {
+        return res.status(400).json({ error: error.message });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Receive delivery status callbacks
+  app.post("/api/delivery-status", (req, res) => {
+    const { messageId, status } = req.body;
+    console.log(`Message ${messageId} status: ${status}`);
+    res.status(200).json({ received: true });
+  });
+
+  // List phone numbers with per-request token override
+  app.get("/api/numbers", async (req, res) => {
+    const userToken = req.headers.authorization?.replace("Bearer ", "");
+
+    const response = await signalHouse.numbers.getPhoneNumbers({
+      page: parseInt(req.query.page) || 1,
+      limit: parseInt(req.query.limit) || 20,
+      options: { token: userToken },
+    });
+
+    if (!response.success) {
+      return res.status(response.status || 500).json({ error: response.error });
+    }
+
+    return res.json(response.data);
+  });
+
+  // Get message analytics
+  app.get("/api/analytics", async (req, res) => {
+    const { startDate, endDate, campaignId } = req.query;
+
+    const response = await signalHouse.messages.getAnalytics({
+      startDate,
+      endDate,
+      campaignId,
+    });
+
+    if (!response.success) {
+      return res.status(response.status || 500).json({ error: response.error });
+    }
+
+    return res.json(response.data);
+  });
+
+  app.listen(3000, () => {
+    console.log("Server running on port 3000");
+  });
+
+
+REGISTRATIONS AND REGIONAL REPORTING
+--------------------------------------------------------------------------------
+signalHouse.registrations is one namespace for every country and every registration
+type. type selects the shape of data on a submission and on the record; the catalog
+tells you what a region offers. region (never country) is the jurisdiction: US, GB or
+CA, and any case of UK/GB/GBR/United Kingdom is accepted for GB.
+
+getCatalog({ region }) calls GET /registration/catalog and returns { region,
+jurisdiction, sendingRequiresRegistration, registeredThrough, provisioning, types: [ { type, kind,
+channel, provider, bundles, quantity: { min, max }, requiresParent, available } ] }.
+registeredThrough is "registration" (use this API), "brandsAndCampaigns" (the US:
+register through the Brands and Campaigns APIs) or null (nothing to register, e.g.
+Canada). An unlisted country requires registration and offers no types.
+Types: TEN_DLC_BRAND, TEN_DLC_CAMPAIGN, TOLL_FREE_BRAND, TOLL_FREE_CAMPAIGN,
+SHORT_CODE_BRAND, SHORT_CODE_PROGRAM and SHORT_CODE_LEASE (not available), VIRTUAL_LONG_CODE (UK) and ALPHANUMERIC_SENDER_ID (UK). Kinds: identity, program, sender. Channels: tenDLC, tollFree, shortCode,
+virtualLongCode, alphanumeric. Only a type with available: true can be quoted or
+submitted; the others return 400.
+
+getQuotes({ region, type, quantity, groupId }) calls GET /registration/quotes (quantity
+1-100, default 1; staff may add groupId) and returns { data: [ { capabilities, quantity,
+currency, setupAmount, monthlyAmount, totalSetupAmount, totalMonthlyAmount, etaDays } ] }:
+one quote per bundle. Amounts are integer microdollars; setupAmount and monthlyAmount
+are per number, the totals are for the quantity. There is no quote version to pass back.
+
+createRegistration({ region, type, subgroupId, capabilities, data })
+calls POST /registration and returns the registration (201). capabilities is one of the
+type's bundles; pass options.idempotencyKey to make a retry safe (see IDEMPOTENT
+REQUESTS). data is the type's submission shape. Worked example, the UK
+Virtual Long Code (region "GB", type "VIRTUAL_LONG_CODE", capabilities ["SMS"] or
+["SMS","VOICE"]): data = { quantity (1-100), useCases (1-10 descriptions), voice }.
+voice is required exactly when capabilities include VOICE and is the carrier's voice
+dossier: companyName, companyPhone, companyWebsite, companyEmail,
+address { line1, line2?, city, postalCode, country }, companyDescription,
+campaignName, campaignDescription, optInMethods (WEB/KEYWORD/VERBAL), optOutKeywords
+["STOP","UNSUBSCRIBE"], callTypes (LANDLINE/LOCAL/INTERNATIONAL), callsPerDay (1-5),
+callDurationMinutes (1-10, 15, 30, 45 or 60) and termsUrl.
+
+Worked example, UK alphanumeric sender ID: region "GB", type
+"ALPHANUMERIC_SENDER_ID", capabilities ["SMS"], data {requestedSenderId (3-11
+letters, digits, spaces, dots or dashes; at least one letter), trafficOrigin
+(LOCAL: headquartered in the UK | INTERNATIONAL), trafficType (TRANSACTIONAL |
+PROMOTIONAL), companyName, companyCountry, companyWebsite (http/https), industry,
+messageExample, senderRelationship? (required when requestedSenderId differs from
+companyName)}. quantity is always 1; the quote is one ["SMS"] bundle, 6000000
+setup and 6000000 monthly by default. Once the registration is APPROVED,
+data.phoneNumbers holds the granted sender (e.g. ["ACME"]); pass it as the sender
+to send SMS to UK recipients. The server appends "\nOpt out: sihou.io/o/{code}"
+to every message from it, counted in segments and in the estimate.
+
+getRegistrations({ groupId, subgroupId, region, type, kind, status,
+parentRegistrationId, phoneNumber, sortBy (createdAt default, subgroupId, registrationId,
+region or status), sortOrder (asc or desc, default desc), page, limit }) returns { data: [registrations], totalCount, page,
+limit }; status and region take one value or an array. Staff may omit groupId to read
+the review queue. cancelRegistration
+({ registrationId }) sends DELETE /registration/:registrationId and returns the
+cancelled record; allowed from SIGNAL_HOUSE_REVIEW, SIGNAL_HOUSE_APPROVED,
+PENDING_PROVIDER, NEEDS_INFORMATION, PAYMENT_REQUIRED and APPROVED (409 otherwise),
+for the api, admin, developer and user roles. getRegistration
+({ registrationId }) returns the record: { registrationId, groupId, subgroupId, region,
+type, kind, channel, provider, externalId, parentRegistrationId, status, stage,
+capabilities, submittedAt, approvedAt, expiresAt, review: { decision, reviewedAt,
+reason }, data, history: [ { status, stage, actor, actorType, timestamp, reason } ],
+createdAt, updatedAt }. data carries the type's public fields; for VIRTUAL_LONG_CODE
+that is quantity, useCases, phoneNumbers and voice. Statuses: DRAFT,
+SIGNAL_HOUSE_REVIEW, SIGNAL_HOUSE_APPROVED, SIGNAL_HOUSE_REJECTED, SUBMITTING,
+PENDING_PROVIDER, NEEDS_INFORMATION, PAYMENT_REQUIRED (the setup fee could not be
+funded; retried hourly), APPROVED, REJECTED, CANCELLED, PENDING_DELETE, DELETED,
+EXPIRED and RECONCILIATION_REQUIRED. Never send from a number whose registration is
+not APPROVED.
+
+Staff only, under signalHouse.registrations.admin (enableAdmin exposes the helpers; it
+does not grant server permission):
+reviewRegistration({ registrationId, action: "APPROVE"|"REJECT", reason }) -- rejection
+requires reason. correctRegistration({ registrationId, reason, data }) saves the type's
+correctable fields (for VIRTUAL_LONG_CODE: useCases and, for SMS + Voice, voice);
+owner, quantity, bundle and provider order never change. addNumber({ registrationId,
+phoneNumber }) allocates a provider-owned number. reconcile({ registrationId,
+externalId }) links an existing provider order to a registration parked in
+RECONCILIATION_REQUIRED; never place another order to retry a timeout. getApplication
+({ registrationId }) returns the completed DOCX as an ArrayBuffer.
+
+getMessages, getAnalytics, getAnalyticsDetail, getAnalyticsBySubgroup,
+getAnalyticsByErrorCode, getDncAnalytics and getDncRecords accept region and regionScopes;
+getAnalyticsFilterOptions accepts region. region is US, GB or CA (any case of UK/GB/GBR/United Kingdom is accepted for GB):
+one value, an array, or a comma-separated string; omitted means every region. regionScopes
+is an array of OR-ed branches, each { region, channels, brandId?, campaignId?,
+phoneNumber? } with channels among tenDLC, virtualLongCode, tollFree, shortCode and p2p;
+the SDK sends it as JSON. Example:
+[{ region: "US", channels: ["tenDLC"], brandId: ["BUS1"] },
+ { region: "GB", channels: ["virtualLongCode"], phoneNumber: ["447400123456"] }]
+Group authorization and the subgroup/carrier/date filters apply outside the OR. [] matches
+nothing; omitting regionScopes keeps the existing filtering. getMessages always accepts
+both; the analytics and DNC methods accept them only where the environment serves hourly
+analytics and return 400 elsewhere.
+
+getAnalytics, getAnalyticsDetail, getAnalyticsThroughput and getDncAnalytics accept
+registrationId (one id or an array, sent as repeated query keys like campaignId): filter
+to traffic attributed to these registrations (hourly analytics only; a 400 while hourly
+reads are off). Except on getAnalyticsThroughput, which has no phoneNumber filter, a
+phoneNumber filter takes precedence. getPhoneNumbers accepts a single registrationId to
+list the numbers provisioned under that registration.
+
+getAnalyticsBySubgroup, getAnalyticsByErrorCode and getDncRecords accept registrationId
+the same way, with the same hourly-only rule and precedence. getMessages accepts
+registrationId in every environment: it filters to messages attributed to those
+registrations, and a phoneNumber filter narrows further. Every method returns 400 when
+registrationId is combined with campaignId.
+
+getAnalyticsFilterOptions returns each phone number with its type (TOLL_FREE,
+SHORT_CODE, ALPHANUMERIC, VIRTUAL_LONG_NUMBER, and older local-number spellings) and
+country (ISO-2), null when unknown. TOLL_FREE, SHORT_CODE and ALPHANUMERIC are channels
+by type; a US number of any other type is 10DLC and a non-US one is a Virtual Long Code.
+It also returns carriers, a plain array of carrier name strings.
+
+UK sending is SMS only, from a +44 Virtual Long Code to GB mobiles; MMS and group MMS are
+unavailable. estimateMessage accepts 10-15 digit recipients; a +44 sender estimates SMS to
+GB mobiles only and returns region "GB", and is refused with 400 while UK sending is
+disabled for the environment. Amounts are integer microdollars. A READY alphanumeric
+sender ID (e.g. "ACME") also sends SMS to UK recipients only; its estimate includes the
+opt-out footer.
+
+LANGUAGE EXAMPLE
+const catalog = await signalHouse.registrations.getCatalog({ region: "GB" });
+const quotes = await signalHouse.registrations.getQuotes({ region: "GB", type: "VIRTUAL_LONG_CODE", quantity: 1 });
+const request = await signalHouse.registrations.createRegistration({
+  region: "GB", type: "VIRTUAL_LONG_CODE", subgroupId: "SGEXAMPLE",
+  capabilities: ["SMS"], data: { quantity: 1, useCases: ["Support"] },
+});
+// UK alphanumeric sender ID
+await signalHouse.registrations.getQuotes({ region: "GB", type: "ALPHANUMERIC_SENDER_ID" });
+await signalHouse.registrations.createRegistration({
+  region: "GB", type: "ALPHANUMERIC_SENDER_ID", subgroupId: "SGEXAMPLE",
+  capabilities: ["SMS"], data: {
+    requestedSenderId: "ACME", trafficOrigin: "LOCAL", trafficType: "TRANSACTIONAL",
+    companyName: "Acme", companyCountry: "United Kingdom", companyWebsite: "https://acme.example",
+    industry: "Retail", messageExample: "Your Acme order has shipped.",
+  },
+});
+// Poll until status is "APPROVED"; data.phoneNumbers is then ["ACME"].
+await signalHouse.registrations.getRegistration({ registrationId: "REG2" });
+await signalHouse.messages.sendSMS({ senderPhoneNumber: "ACME", recipientPhoneNumbers: ["447400123456"], messageBody: "Your Acme order has shipped." });
+await signalHouse.messages.getMessages({ region: ["US", "GB"], regionScopes: [] });
