@@ -57,7 +57,7 @@ Integrated Axios with standardized returns
 Lightweight and tree-shakeable
 
 Documentation
-For full API reference and advanced usage, visit https://v2.signalhouse.io
+For full API reference and advanced usage, visit https://app2.signalhouse.io/docs
 
 License
 ISC © Signal House

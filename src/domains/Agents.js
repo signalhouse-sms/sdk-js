@@ -92,6 +92,22 @@
  */
 
 /**
+ * A paused agent conversation: a person took over the conversation between an agent's number and
+ * one contact, so the agent does not answer that contact on that number until someone resumes it. As returned
+ * by the server.
+ * @typedef {Object} AgentContactPause
+ * @property {string} groupId - The group that owns the agent's number.
+ * @property {string|null} subgroupId - The number's subgroup.
+ * @property {string} channel - The channel; "sms".
+ * @property {string} endpointValue - The agent's number: digits only, country code included, no "+".
+ * @property {string} contactIdentifier - The contact's number: digits only, country code included, no "+".
+ * @property {string} reason - Why it was paused: "human_reply" (a person replied by hand), "escalation" (the agent asked for a person) or "manual".
+ * @property {string|null} pausedBy - The user who paused it, when known.
+ * @property {string} createdAt - When the conversation was paused.
+ * @property {string} updatedAt - Last-update timestamp.
+ */
+
+/**
  * A reply an SMS agent wrote but did not send, held for a person to approve or reject (the
  * Pending Replies queue), as returned by the server.
  * @typedef {Object} AgentReplyDraft
@@ -106,7 +122,7 @@
  * @property {string} inboundText - The contact message the agent was answering.
  * @property {string} draftText - The reply as the agent wrote it.
  * @property {string|null} sentText - The text actually sent; differs from draftText when edited.
- * @property {string} reason - Why it was held: "review_mode", "escalation", "fallback" or "guardrail".
+ * @property {string} reason - Why it was held: "review_mode", "escalation", "fallback" or "guardrail", or "autopilot" for a confident auto-pilot reply that its channel delivers without a person.
  * @property {string} status - "pending", "sending", "sent", "rejected" or "failed" (the send path accepted nothing, e.g. the contact opted out).
  * @property {string|null} decidedBy - The user who approved or rejected it.
  * @property {string|null} decidedAt - When it was approved or rejected.
@@ -584,6 +600,70 @@ export class Agents {
 		const safeChannel = encodeURIComponent(channel);
 		const safeEndpointValue = encodeURIComponent(endpointValue);
 		return this.client(`/agent/endpoints/${safeChannel}/${safeEndpointValue}`, { method: "DELETE", ...options });
+	}
+
+	/**
+	 * List paused agent conversations in a group, newest first. A paused conversation is one a person took
+	 * over; the agent stays out of it until it is resumed.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The parameters for listing paused conversations.
+	 * @param {string} params.groupId - The group whose paused conversations to list (required).
+	 * @param {string} [params.subgroupId] - Narrow to one subgroup.
+	 * @param {string} [params.channel] - Narrow to one channel ("sms").
+	 * @param {string} [params.endpointValue] - Narrow to one agent number (digits only, no "+").
+	 * @param {string} [params.contactIdentifier] - Narrow to one contact number (digits only, no "+").
+	 * @param {RequestOptions} [params.options] - Additional options for the request.
+	 * @throws {Error} Throws an error if the groupId parameter is missing.
+	 * @returns {Promise<SdkResponse<AgentContactPause[]>>} - The paused conversations returned from the server.
+	 */
+	async getAgentContactPauses({ groupId, subgroupId, channel, endpointValue, contactIdentifier, options = {} }) {
+		this.client._require({ groupId });
+		const queryString = this.client._getQueryString({ groupId, subgroupId, channel, endpointValue, contactIdentifier });
+		return this.client(`/agent/pauses${queryString}`, { method: "GET", ...options });
+	}
+
+	/**
+	 * Pause an agent on one conversation (its number + one contact). The agent stops answering that contact
+	 * on that number until the conversation is resumed; there is no timer. The conversation's pending
+	 * replies are rejected. Pausing a paused conversation keeps the original pause.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The parameters for the pause.
+	 * @param {string} params.channel - The channel; must be "sms".
+	 * @param {string} params.endpointValue - The agent's number: 10 to 15 digits, country code included, no "+".
+	 * @param {string} params.contactIdentifier - The contact's number: 10 to 15 digits, country code included, no "+".
+	 * @param {Object} [params.pauseData] - `{ reason? }`: "human_reply" or "manual" (the default).
+	 * @param {RequestOptions} [params.options] - Additional options for the request.
+	 * @throws {Error} Throws an error if channel, endpointValue, or contactIdentifier is missing.
+	 * @returns {Promise<SdkResponse<AgentContactPause>>} - The pause returned from the server.
+	 */
+	async pauseAgentConversation({ channel, endpointValue, contactIdentifier, pauseData = {}, options = {} }) {
+		this.client._require({ channel, endpointValue, contactIdentifier });
+		const safeChannel = encodeURIComponent(channel);
+		const safeEndpointValue = encodeURIComponent(endpointValue);
+		const safeContactIdentifier = encodeURIComponent(contactIdentifier);
+		return this.client(`/agent/pauses/${safeChannel}/${safeEndpointValue}/${safeContactIdentifier}`, { method: "PUT", body: pauseData, ...options });
+	}
+
+	/**
+	 * Resume an agent on a paused conversation, so it answers the contact's next text again.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The parameters for the resume.
+	 * @param {string} params.channel - The channel; must be "sms".
+	 * @param {string} params.endpointValue - The agent's number: 10 to 15 digits, country code included, no "+".
+	 * @param {string} params.contactIdentifier - The contact's number: 10 to 15 digits, country code included, no "+".
+	 * @param {RequestOptions} [params.options] - Additional options for the request.
+	 * @throws {Error} Throws an error if channel, endpointValue, or contactIdentifier is missing.
+	 * @returns {Promise<SdkResponse<AgentContactPause>>} - The removed pause returned from the server.
+	 */
+	async resumeAgentConversation({ channel, endpointValue, contactIdentifier, options = {} }) {
+		this.client._require({ channel, endpointValue, contactIdentifier });
+		const safeChannel = encodeURIComponent(channel);
+		const safeEndpointValue = encodeURIComponent(endpointValue);
+		const safeContactIdentifier = encodeURIComponent(contactIdentifier);
+		return this.client(`/agent/pauses/${safeChannel}/${safeEndpointValue}/${safeContactIdentifier}`, { method: "DELETE", ...options });
 	}
 
 	/**

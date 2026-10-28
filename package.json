@@ -1,6 +1,6 @@
 {
   "name": "@signalhouse-sms/sdk",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "Signal House SDK for use with the Signal House platform",
   "type": "module",
   "main": "src/SignalHouseSDK.js",

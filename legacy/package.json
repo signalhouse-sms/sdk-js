@@ -1,6 +1,6 @@
 {
   "name": "@signalhousellc/sdk",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "Deprecated: moved to @signalhouse-sms/sdk. This package installs and re-exports it.",
   "type": "module",
   "main": "index.js",
@@ -30,7 +30,7 @@
     "README.md"
   ],
   "dependencies": {
-    "@signalhouse-sms/sdk": "1.5.1"
+    "@signalhouse-sms/sdk": "1.6.0"
   },
   "author": "Signal House LLC",
   "license": "ISC",

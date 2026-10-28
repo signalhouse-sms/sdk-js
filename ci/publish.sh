@@ -23,12 +23,21 @@ V=$(node -p "require('./package.json').version")
 PROVENANCE=()
 [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] && PROVENANCE=(--provenance)
 
+# npm answers 409 "previously staged version" for a publish it accepted but has not made visible yet; that is success.
+publish_npm() {
+	local out
+	if out=$(run npm publish --access public "$@" 2>&1); then printf '%s\n' "$out"; return 0; fi
+	printf '%s\n' "$out" >&2
+	grep -q "previously staged version \"$V\"" <<<"$out" && { echo "$V is staged on npm, skipping"; return 0; }
+	return 1
+}
+
 if published @signalhouse-sms/sdk "$V"; then
 	echo "@signalhouse-sms/sdk@$V exists, skipping"
 else
 	run npm ci --prefix "$PWD" --no-audit --no-fund || fail "npm ci"
 	run npm run build:types || fail "build:types"
-	run npm publish --access public ${PROVENANCE[@]+"${PROVENANCE[@]}"} || fail "npm publish @signalhouse-sms/sdk"
+	publish_npm ${PROVENANCE[@]+"${PROVENANCE[@]}"} || fail "npm publish @signalhouse-sms/sdk"
 fi
 
 if published @signalhousellc/sdk "$V"; then
@@ -42,5 +51,5 @@ else
 		printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_LEGACY_TOKEN" >"$NPMRC"
 		LEGACY_CONFIG=(--userconfig "$NPMRC")
 	fi
-	(cd legacy && run npm publish --access public ${LEGACY_CONFIG[@]+"${LEGACY_CONFIG[@]}"} ${PROVENANCE[@]+"${PROVENANCE[@]}"}) || fail "npm publish @signalhousellc/sdk"
+	(cd legacy && publish_npm ${LEGACY_CONFIG[@]+"${LEGACY_CONFIG[@]}"} ${PROVENANCE[@]+"${PROVENANCE[@]}"}) || fail "npm publish @signalhousellc/sdk"
 fi

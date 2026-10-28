@@ -41,14 +41,17 @@ export class Numbers {
          * @roles signalhouse
          * @param {Object} params - The parameters for approving the request
          * @param {string} params.portingId - The _id of the port-in request
+         * @param {string} [params.subGroupId] - Subgroup to assign when the request has none yet.
+         *   Ignored if the request already has a subGroupId -- an existing assignment is never overwritten.
          * @param {RequestOptions} [params.options] - Additional options for the request
          * @returns {Promise<SdkResponse<any>>} A promise that resolves to the updated port-in request
          */
-        approvePortRequest: async ({ portingId, options = {} }) => {
+        approvePortRequest: async ({ portingId, subGroupId, options = {} }) => {
           this.client._require({ portingId });
           const safeId = encodeURIComponent(portingId);
           return this.client(`/number/portin/${safeId}/approve`, {
             method: 'POST',
+            body: { subGroupId },
             ...options,
           });
         },
