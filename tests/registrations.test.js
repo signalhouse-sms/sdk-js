@@ -376,29 +376,41 @@ test("createBusinessVerification sends subgroupId as a query parameter only when
 	assert.equal(calls.length, 2);
 });
 
+test("the toll-free ISV account methods are staff operations behind enableAdmin", () => {
+	const { client } = captureClient();
+	const domain = new Brands(client);
+	assert.equal(domain.admin, undefined);
+	assert.equal("getTollFreeIsvAccount" in domain, false);
+	assert.equal("setTollFreeIsvAccount" in domain, false);
+	assert.deepEqual(Object.keys(new Brands(client, undefined, true).admin), ["getTollFreeIsvAccount", "setTollFreeIsvAccount"]);
+	const config = { apiKey: "test", baseUrl: "https://example.invalid" };
+	assert.equal(new SignalHouseSDK(config).brands.admin, undefined);
+	assert.deepEqual(Object.keys(new SignalHouseSDK({ ...config, enableAdmin: true }).brands.admin), ["getTollFreeIsvAccount", "setTollFreeIsvAccount"]);
+});
+
 test("getTollFreeIsvAccount gets the group's toll-free ISV account and requires groupId", async () => {
 	const { client, calls } = captureClient();
-	const domain = new Brands(client);
-	await domain.getTollFreeIsvAccount({ groupId: "G 1", options: { token: "session" } });
+	const { admin } = new Brands(client, undefined, true);
+	await admin.getTollFreeIsvAccount({ groupId: "G 1", options: { token: "session" } });
 	assert.equal(calls[0].path, "/brand/toll-free-isv-account/G%201");
 	assert.equal(calls[0].request.method, "GET");
 	assert.equal("body" in calls[0].request, false);
 	assert.equal(calls[0].request.token, "session");
-	await assert.rejects(domain.getTollFreeIsvAccount({}), /groupId/);
+	await assert.rejects(admin.getTollFreeIsvAccount({}), /groupId/);
 	assert.equal(calls.length, 1);
 });
 
 test("setTollFreeIsvAccount puts the account and its API key as the body and requires every field", async () => {
 	const { client, calls } = captureClient();
-	const domain = new Brands(client);
+	const { admin } = new Brands(client, undefined, true);
 	const account = { accountSid: `AC${"a".repeat(32)}`, apiKeySid: `SK${"b".repeat(32)}`, apiKeySecret: "test-secret" };
-	await domain.setTollFreeIsvAccount({ groupId: "G 1", ...account, options: { token: "session" } });
+	await admin.setTollFreeIsvAccount({ groupId: "G 1", ...account, options: { token: "session" } });
 	assert.equal(calls[0].path, "/brand/toll-free-isv-account/G%201");
 	assert.equal(calls[0].request.method, "PUT");
 	assert.deepEqual(calls[0].request.body, account);
 	assert.equal(calls[0].request.token, "session");
 	for (const field of ["groupId", "accountSid", "apiKeySid", "apiKeySecret"]) {
-		await assert.rejects(domain.setTollFreeIsvAccount({ groupId: "G 1", ...account, [field]: undefined }), new RegExp(`parameter: ${field}$`));
+		await assert.rejects(admin.setTollFreeIsvAccount({ groupId: "G 1", ...account, [field]: undefined }), new RegExp(`parameter: ${field}$`));
 	}
 	assert.equal(calls.length, 1);
 });

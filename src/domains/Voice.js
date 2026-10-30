@@ -7,6 +7,7 @@ import { CallLogs } from "./voice/CallLogs.js";
 import { GlobalVoiceSettings } from "./voice/GlobalVoiceSettings.js";
 import { Tokens } from "./voice/Tokens.js";
 import { Analytics } from "./voice/Analytics.js";
+import { OutboundVoice } from "./voice/OutboundVoice.js";
 
 /**
  * Voice domain — wraps the Voice service (mounted under /voice on the
@@ -37,5 +38,6 @@ export class Voice {
 		this.globalVoiceSettings = new GlobalVoiceSettings(client, enableAdmin);
 		this.tokens = new Tokens(client, enableAdmin);
 		this.analytics = new Analytics(client, enableAdmin);
+		this.outboundVoice = new OutboundVoice(client, enableAdmin);
 	}
 }

@@ -84,8 +84,12 @@ IDEMPOTENT REQUESTS
 
 AUTH  (signalHouse.auth)
 --------------------------------------------------------------------------------
-  login({ email, password })
-    Login with email and password.
+  login({ email, password, deviceToken })
+    Login with email and password. Returns { token }, or { mfaRequired: true,
+    challengeId, methods, primaryMethod, hasBackupCodes } when 2FA is on, or
+    { token, twoFactorSetupRequired: true } (a setup-only session) when the
+    user's group requires 2FA and they haven't turned it on.
+    deviceToken (from verifyTwoFactorChallenge) skips 2FA on a trusted device.
 
   resetPassword({ userId, newPassword })
     Reset a user's password.
@@ -95,6 +99,120 @@ AUTH  (signalHouse.auth)
 
   logoutAll()
     Log out all other users in the caller's active group.
+
+  getOAuthProviders()
+    List the OAuth sign-in providers enabled on this API.
+
+  getOAuthAuthorizationUrl({ provider, next, email, linkTicket, reauthTicket })
+    Build the URL that starts an OAuth sign-in (navigate the browser to it;
+    not an API call). next is an optional same-site path that is handed back
+    on the /auth/callback redirect. provider "sso" (Enterprise SSO) needs the
+    user's work email. A linkTicket (from createOAuthLink) links the provider
+    to the signed-in account instead of signing in. A reauthTicket (from
+    createOAuthReauth) signs the account in again to confirm it's them; "sso"
+    needs no email then.
+
+  getOAuthLinks()
+    Your sign-in methods: passwordKnown, and the providers linked to your
+    account.
+
+  createOAuthLink({ provider })
+    Start linking Google, Microsoft or Apple; returns a 2-minute linkTicket for
+    getOAuthAuthorizationUrl. Needs a fresh confirmTwoFactorIdentity.
+
+  createOAuthReauth({ provider })
+    Start signing in again with a provider already linked to your account,
+    to confirm it's you. Sends a POST to /auth/oauth/:provider/reauth
+    ("google", "microsoft", "apple" or "sso"). Returns a 2-minute
+    reauthTicket for getOAuthAuthorizationUrl and a reauthSecret to keep for
+    confirmOAuthReauth; the browser comes back to
+    /Settings/Security with a single-use pendingReauth (the session that
+    started it redeems it with confirmOAuthReauth) or reauthError (reauth_wrong_account,
+    reauth_unsupported, reauth_stale, invalid_state, sso_not_configured,
+    access_denied, provider_error). Spends nothing.
+
+  confirmOAuthReauth({ pendingReauth, reauthSecret })
+    Finish signing in again with a linked provider. Sends a POST to
+    /auth/oauth/reauth/confirm with { pendingReauth, reauthSecret }. pendingReauth
+    is the
+    single-use value (valid 5 minutes) the createOAuthReauth round trip returns
+    to /Settings/Security with. It counts only for the same account and
+    session that started it; 400 when expired or used, 403 for another
+    account or session. reauthSecret is the value the create call returned;
+    a wrong or missing secret is refused (403) and uses up the re-sign-in.
+    Returns: { identityConfirmed } (true when 2FA is off, so it counts as a
+    confirmed identity).
+
+  confirmOAuthLink({ pendingLink })
+    Finish linking: the provider round trip returns to /Settings/Security
+    with ?pendingLink=…; this links it, but only for the account the link
+    was started for.
+
+  deleteOAuthLink({ provider })
+    Unlink a provider. Refused when it is your only way to sign in. Needs a
+    fresh confirmTwoFactorIdentity.
+
+  readOAuthTicket({ ticket })
+    Read what an OAuth callback ticket resolves to (session, select or
+    signup) without consuming it.
+
+  exchangeOAuthTicket({ ticket, userId, deviceToken })
+    Exchange a session/select OAuth ticket for a JWT. userId is required for
+    a select ticket. Like login, may return { mfaRequired: true, ... }.
+
+  getTwoFactorSettings()
+    Get your 2FA settings: methods (targets masked), default method,
+    backup-code counts, trusted devices.
+
+  confirmTwoFactorIdentity({ password, code, method, usingBackupCode })
+    Confirm it's you before a sensitive 2FA change (startTwoFactorEnrollment,
+    removeTwoFactorMethod, regenerateBackupCodes, disableTwoFactor). Pass a
+    code or backup code while 2FA is on, the password while it's off. Lasts
+    5 minutes, belongs to the session that made it, unlocks one change.
+
+  sendTwoFactorIdentityCode({ method })
+    Send a code by "sms" or "email" for confirmTwoFactorIdentity.
+
+  startTwoFactorEnrollment({ method, phone, address, deviceName })
+    Start enrolling "app", "sms" or "email". App returns secret + otpauthUri;
+    sms/email send a code. Needs confirmTwoFactorIdentity first.
+
+  confirmTwoFactorEnrollment({ enrollmentId, code })
+    Confirm with the code. The first method turns 2FA on and returns backup
+    codes (shown once).
+
+  setTwoFactorPrimaryMethod({ method })
+    Choose the method offered first at sign-in.
+
+  removeTwoFactorMethod({ method })
+    Remove a method. Removing the last one turns 2FA off. Needs
+    confirmTwoFactorIdentity first.
+
+  regenerateBackupCodes()
+    Replace all backup codes (shown once). Needs confirmTwoFactorIdentity
+    first.
+
+  revokeTrustedDevice({ deviceId })
+    Stop trusting a device.
+
+  disableTwoFactor()
+    Turn 2FA off. Needs confirmTwoFactorIdentity first.
+
+  getTwoFactorPrompt() / dismissTwoFactorPrompt()
+    Whether the "secure your account" prompt is due / dismiss it.
+
+  sendTwoFactorChallengeCode({ challengeId, method })
+    Send a sign-in code by "sms" or "email".
+
+  verifyTwoFactorChallenge({ challengeId, code, method, usingBackupCode,
+                             rememberDevice, deviceName })
+    Verify a sign-in code or backup code. Returns { token, deviceToken? }.
+
+  cancelTwoFactorChallenge({ challengeId })
+    Cancel a pending sign-in challenge.
+
+  admin.resetUserTwoFactor({ userId })            (enableAdmin, staff only)
+    Turn 2FA off for a locked-out user.
 
 
 BILLING  (signalHouse.billing)
@@ -292,6 +410,27 @@ GROUPS  (signalHouse.groups)
 
   updateGroup({ id, groupData })
     Update group information.
+
+  getSsoConfiguration({ groupId })
+    The group's Enterprise SSO configuration: identity provider (no secret),
+    claimed domains with their DNS TXT records, and the redirect URL.
+
+  saveSsoConnection({ groupId, issuer, clientId, clientSecret, enabled })
+    Create or update the group's OpenID Connect identity provider. Needs a
+    fresh auth.confirmTwoFactorIdentity.
+
+  deleteSsoConnection({ groupId })
+    Remove the identity provider, its domains and the links made through it.
+    Needs a fresh auth.confirmTwoFactorIdentity.
+
+  addSsoDomain({ groupId, domain })
+    Claim an email domain; returns the TXT record that verifies it.
+
+  verifySsoDomain({ groupId, domain })
+    Verify a claimed domain by its DNS TXT record.
+
+  removeSsoDomain({ groupId, domain })
+    Remove a domain from the group's SSO.
 
 
 LANDINGS  (signalHouse.landings)

@@ -175,6 +175,51 @@ export class Brands {
     this.client = client;
     this.multipartClient = multipartClient;
     this.enableAdmin = enableAdmin;
+
+    if (enableAdmin) {
+      this.admin = {
+        /**
+         * Get a group's toll-free ISV account: the group's own top-level account at the toll-free provider, used when its
+         * subgroups are separate businesses. Each subgroup gets an account and business verifications of its own under it.
+         * Staff only.
+         * @async
+         * @roles signalhouse_api, signalhouse_admin, signalhouse_user
+         * @param {Object} params - The parameters for getting the toll-free ISV account
+         * @param {string} params.groupId - The ID of the group whose toll-free ISV account to get
+         * @param {RequestOptions} [params.options] - Additional options for the request
+         * @throws {Error} Throws an error if the groupId parameter is missing
+         * @returns {Promise<SdkResponse<TollFreeIsvAccount|null>>} The group's toll-free ISV account, or null when it has none. The API key secret is never returned. The API returns 404 when the group does not exist or is not active.
+         */
+        getTollFreeIsvAccount: async ({ groupId, options = {} }) => {
+          this.client._require({ groupId });
+          return this.client(`/brand/toll-free-isv-account/${encodeURIComponent(groupId)}`, { method: 'GET', ...options });
+        },
+
+        /**
+         * Register a group's toll-free ISV account, or replace the API key of the account it already has. Staff only. The
+         * toll-free provider checks the account and key before they are stored. Register it before the group has any toll-free
+         * records at the provider; after that, only the API key of the same account can be replaced.
+         * @async
+         * @roles signalhouse_admin
+         * @param {Object} params - The parameters for setting the toll-free ISV account
+         * @param {string} params.groupId - The ID of the group whose toll-free ISV account to set
+         * @param {string} params.accountSid - The SID of the group's own top-level account at the toll-free provider (AC followed by 32 lowercase hexadecimal characters)
+         * @param {string} params.apiKeySid - The SID of a Main API key in that account, which can create subaccounts (SK followed by 32 lowercase hexadecimal characters)
+         * @param {string} params.apiKeySecret - The API key's secret (1 to 128 characters), stored encrypted and never returned
+         * @param {RequestOptions} [params.options] - Additional options for the request
+         * @throws {Error} Throws an error if the groupId, accountSid, apiKeySid or apiKeySecret parameter is missing
+         * @returns {Promise<SdkResponse<TollFreeIsvAccount>>} The stored toll-free ISV account, without the API key secret. The API returns 400 when the provider refuses the account or its key, and 404 when the group does not exist or is not active.
+         */
+        setTollFreeIsvAccount: async ({ groupId, accountSid, apiKeySid, apiKeySecret, options = {} }) => {
+          this.client._require({ groupId, accountSid, apiKeySid, apiKeySecret });
+          return this.client(`/brand/toll-free-isv-account/${encodeURIComponent(groupId)}`, {
+            method: 'PUT',
+            body: { accountSid, apiKeySid, apiKeySecret },
+            ...options,
+          });
+        },
+      };
+    }
   }
 
   /**
@@ -371,47 +416,6 @@ export class Brands {
   async updateBusinessVerification({ groupId, businessVerificationId, details, options = {} }) {
     this.client._require({ groupId, businessVerificationId, details });
     return this.client(`/brand/business-verification/${encodeURIComponent(groupId)}/${encodeURIComponent(businessVerificationId)}`, { method: 'PUT', body: details, ...options });
-  }
-
-  /**
-   * Get a group's toll-free ISV account: the group's own top-level account at the toll-free provider, used when its
-   * subgroups are separate businesses. Each subgroup gets an account and business verifications of its own under it.
-   * Staff only.
-   * @async
-   * @roles signalhouse_api, signalhouse_admin, signalhouse_user
-   * @param {Object} params - The parameters for getting the toll-free ISV account
-   * @param {string} params.groupId - The ID of the group whose toll-free ISV account to get
-   * @param {RequestOptions} [params.options] - Additional options for the request
-   * @throws {Error} Throws an error if the groupId parameter is missing
-   * @returns {Promise<SdkResponse<TollFreeIsvAccount|null>>} The group's toll-free ISV account, or null when it has none. The API key secret is never returned. The API returns 404 when the group does not exist or is not active.
-   */
-  async getTollFreeIsvAccount({ groupId, options = {} }) {
-    this.client._require({ groupId });
-    return this.client(`/brand/toll-free-isv-account/${encodeURIComponent(groupId)}`, { method: 'GET', ...options });
-  }
-
-  /**
-   * Register a group's toll-free ISV account, or replace the API key of the account it already has. Staff only. The
-   * toll-free provider checks the account and key before they are stored. Register it before the group has any toll-free
-   * records at the provider; after that, only the API key of the same account can be replaced.
-   * @async
-   * @roles signalhouse_admin
-   * @param {Object} params - The parameters for setting the toll-free ISV account
-   * @param {string} params.groupId - The ID of the group whose toll-free ISV account to set
-   * @param {string} params.accountSid - The SID of the group's own top-level account at the toll-free provider (AC followed by 32 lowercase hexadecimal characters)
-   * @param {string} params.apiKeySid - The SID of a Main API key in that account, which can create subaccounts (SK followed by 32 lowercase hexadecimal characters)
-   * @param {string} params.apiKeySecret - The API key's secret (1 to 128 characters), stored encrypted and never returned
-   * @param {RequestOptions} [params.options] - Additional options for the request
-   * @throws {Error} Throws an error if the groupId, accountSid, apiKeySid or apiKeySecret parameter is missing
-   * @returns {Promise<SdkResponse<TollFreeIsvAccount>>} The stored toll-free ISV account, without the API key secret. The API returns 400 when the provider refuses the account or its key, and 404 when the group does not exist or is not active.
-   */
-  async setTollFreeIsvAccount({ groupId, accountSid, apiKeySid, apiKeySecret, options = {} }) {
-    this.client._require({ groupId, accountSid, apiKeySid, apiKeySecret });
-    return this.client(`/brand/toll-free-isv-account/${encodeURIComponent(groupId)}`, {
-      method: 'PUT',
-      body: { accountSid, apiKeySid, apiKeySecret },
-      ...options,
-    });
   }
 
   /**

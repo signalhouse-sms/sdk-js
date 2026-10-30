@@ -171,7 +171,7 @@ export class Groups {
 	 * @roles api, admin, developer, billing
 	 * @param {Object} params - The parameters for updating a group
 	 * @param {string} params.id - The ID of the group to update
-	 * @param {Object} params.groupData - The data for the group, including required fields such as groupName.
+	 * @param {Object} params.groupData - The data for the group, including required fields such as groupName. A group admin can set requireTwoFactor (boolean) to require 2FA for every member.
 	 *   Optional CNP fields: cspId (string|null), defaultCnpSubgroupId (string|null)
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @throws {Error} Throws an error if the id or groupData parameter is missing
@@ -181,5 +181,103 @@ export class Groups {
 		this.client._require({ id, groupData: groupData });
 		const safeId = encodeURIComponent(id);
 		return this.client(`/group/${safeId}`, { method: "PUT", body: groupData, ...options });
+	}
+
+	/**
+	 * Get a group's Enterprise SSO configuration: whether SSO is available, the redirect URL to register at
+	 * the identity provider, the saved provider (never its client secret), and each claimed domain with the
+	 * DNS TXT record that verifies it
+	 * @async
+	 * @roles admin
+	 * @param {Object} params
+	 * @param {string} params.groupId - The group
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - { groupId, available, callbackUrl, connection, domains }
+	 */
+	async getSsoConfiguration({ groupId, options = {} }) {
+		this.client._require({ groupId });
+		const queryString = this.client._getQueryString({ groupId });
+		return this.client(`/group/sso${queryString}`, { method: "GET", ...options });
+	}
+
+	/**
+	 * Create or update a group's OpenID Connect identity provider. Requires a fresh
+	 * auth.confirmTwoFactorIdentity from the same session
+	 * @async
+	 * @roles admin
+	 * @param {Object} params
+	 * @param {string} params.groupId - The group
+	 * @param {string} params.issuer - The provider's https issuer URL
+	 * @param {string} params.clientId - The client ID registered at the provider
+	 * @param {string} [params.clientSecret] - The client secret; required the first time, omit to keep the saved one
+	 * @param {boolean} [params.enabled] - Whether sign-in through the provider is on (default true)
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - The SSO configuration
+	 */
+	async saveSsoConnection({ groupId, issuer, clientId, clientSecret, enabled, options = {} }) {
+		this.client._require({ groupId, issuer, clientId });
+		return this.client(`/group/sso`, { method: "PUT", body: { groupId, issuer, clientId, clientSecret, enabled }, ...options });
+	}
+
+	/**
+	 * Remove a group's identity provider and its domains, and unlink every account that signed in through it.
+	 * Requires a fresh auth.confirmTwoFactorIdentity from the same session
+	 * @async
+	 * @roles admin
+	 * @param {Object} params
+	 * @param {string} params.groupId - The group
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - The (now empty) SSO configuration
+	 */
+	async deleteSsoConnection({ groupId, options = {} }) {
+		this.client._require({ groupId });
+		const queryString = this.client._getQueryString({ groupId });
+		return this.client(`/group/sso${queryString}`, { method: "DELETE", ...options });
+	}
+
+	/**
+	 * Claim an email domain for a group's SSO; the response includes the DNS TXT record that verifies it
+	 * @async
+	 * @roles admin
+	 * @param {Object} params
+	 * @param {string} params.groupId - The group
+	 * @param {string} params.domain - The domain, e.g. "acme.com"
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - The SSO configuration
+	 */
+	async addSsoDomain({ groupId, domain, options = {} }) {
+		this.client._require({ groupId, domain });
+		return this.client(`/group/sso/domains`, { method: "POST", body: { groupId, domain }, ...options });
+	}
+
+	/**
+	 * Verify a claimed domain by its DNS TXT record
+	 * @async
+	 * @roles admin
+	 * @param {Object} params
+	 * @param {string} params.groupId - The group
+	 * @param {string} params.domain - The claimed domain
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - The SSO configuration
+	 */
+	async verifySsoDomain({ groupId, domain, options = {} }) {
+		this.client._require({ groupId, domain });
+		return this.client(`/group/sso/domains/${encodeURIComponent(domain)}/verify`, { method: "POST", body: { groupId }, ...options });
+	}
+
+	/**
+	 * Remove a domain from a group's SSO
+	 * @async
+	 * @roles admin
+	 * @param {Object} params
+	 * @param {string} params.groupId - The group
+	 * @param {string} params.domain - The domain
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - The SSO configuration
+	 */
+	async removeSsoDomain({ groupId, domain, options = {} }) {
+		this.client._require({ groupId, domain });
+		const queryString = this.client._getQueryString({ groupId });
+		return this.client(`/group/sso/domains/${encodeURIComponent(domain)}${queryString}`, { method: "DELETE", ...options });
 	}
 }

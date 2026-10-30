@@ -158,6 +158,7 @@ export class SignalHouseSDK {
 		// Attach helpers to the client
 		client._getQueryString = this._getQueryString.bind(this);
 		client._require = this._require.bind(this);
+		client._baseUrl = this.baseUrl;
 
 		return client;
 	}

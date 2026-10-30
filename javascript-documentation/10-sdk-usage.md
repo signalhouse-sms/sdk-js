@@ -104,11 +104,36 @@ The SDK organizes API endpoints into domain namespaces:
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `login` | `{ email, password }` | Login with email and password |
+| `login` | `{ email, password, deviceToken }` | Login with email and password; returns `{ token }` or a 2FA challenge (`mfaRequired`) |
 | `resetPassword` | `{ userId, newPassword }` | Reset a user's password |
 | `getAuthHistory` | `{ groupId, userId, page, limit }` | Get token login history |
 | `logoutAll` | `{}` | Log out all other users in the caller's active group |
 | `getGroupId` | `{}` | Get the Group ID associated with your JWT (your active group) |
+| `getOAuthProviders` | `{}` | List the OAuth sign-in providers enabled on this API |
+| `getOAuthAuthorizationUrl` | `{ provider, next, email, linkTicket, reauthTicket }` | Build the browser URL that starts an OAuth sign-in (no request is made). `next` is an optional same-site path handed back on the `/auth/callback` redirect; `email` is required for `provider: "sso"` sign-in; `linkTicket` links the provider to the signed-in account instead; `reauthTicket` signs the account in again to confirm it's them |
+| `getOAuthLinks` | `{}` | Your sign-in methods: `passwordKnown` and linked providers |
+| `createOAuthLink` | `{ provider }` | Start linking a provider; returns a 2-minute `linkTicket` (needs a fresh `confirmTwoFactorIdentity`) |
+| `createOAuthReauth` | `{ provider }` | Start signing in again with a linked provider to confirm it's you; returns a 2-minute `reauthTicket` and a `reauthSecret` to keep for `confirmOAuthReauth`. The browser comes back to `/Settings/Security` with a single-use `pendingReauth` (the session that started it redeems it with confirmOAuthReauth) or `reauthError` |
+| `confirmOAuthReauth` | `{ pendingReauth, reauthSecret }` | Finish a re-sign-in: the `pendingReauth` from the `/Settings/Security` redirect; only the same account and session that started it can redeem it. Returns `{ identityConfirmed }` |
+| `confirmOAuthLink` | `{ pendingLink }` | Finish a link: the `pendingLink` from the `/Settings/Security` redirect; only the account that started the link can confirm it |
+| `deleteOAuthLink` | `{ provider }` | Unlink a provider; refused when it is your only way to sign in (needs a fresh `confirmTwoFactorIdentity`) |
+| `readOAuthTicket` | `{ ticket }` | Read what an OAuth callback ticket resolves to: `session`, `select` or `signup` |
+| `exchangeOAuthTicket` | `{ ticket, userId, deviceToken }` | Exchange a `session`/`select` ticket for a JWT (`userId` required for `select`); may return a 2FA challenge |
+| `getTwoFactorSettings` | `{}` | Your 2FA methods (masked), default, backup-code counts, trusted devices |
+| `confirmTwoFactorIdentity` | `{ password, code, method, usingBackupCode }` | Confirm it's you before a sensitive 2FA change: a `code` (or backup code) while 2FA is on, the `password` while it's off. Lasts 5 minutes, unlocks one change |
+| `sendTwoFactorIdentityCode` | `{ method }` | Send a code by `sms` or `email` for `confirmTwoFactorIdentity` |
+| `startTwoFactorEnrollment` | `{ method, phone, address, deviceName }` | Start enrolling `app`, `sms` or `email` (needs `confirmTwoFactorIdentity` first) |
+| `confirmTwoFactorEnrollment` | `{ enrollmentId, code }` | Confirm enrollment; the first method returns backup codes |
+| `setTwoFactorPrimaryMethod` | `{ method }` | Choose the default method |
+| `removeTwoFactorMethod` | `{ method }` | Remove a method (last one turns 2FA off; needs `confirmTwoFactorIdentity` first) |
+| `regenerateBackupCodes` | `{}` | Replace all backup codes (needs `confirmTwoFactorIdentity` first) |
+| `revokeTrustedDevice` | `{ deviceId }` | Stop trusting a device |
+| `disableTwoFactor` | `{}` | Turn 2FA off (needs `confirmTwoFactorIdentity` first) |
+| `getTwoFactorPrompt` / `dismissTwoFactorPrompt` | `{}` | Enrollment prompt due? / dismiss it |
+| `sendTwoFactorChallengeCode` | `{ challengeId, method }` | Send a sign-in code by `sms` or `email` |
+| `verifyTwoFactorChallenge` | `{ challengeId, code, method, usingBackupCode, rememberDevice, deviceName }` | Verify the code; returns `{ token, deviceToken? }` |
+| `cancelTwoFactorChallenge` | `{ challengeId }` | Cancel a pending challenge |
+| `admin.resetUserTwoFactor` | `{ userId }` | Staff only (`enableAdmin`): turn 2FA off for a locked-out user |
 
 ```javascript
 // Login
@@ -141,6 +166,25 @@ if (response.success) {
 const group = await signalHouse.auth.getGroupId();
 if (group.success) {
   console.log(group.data.groupId);
+}
+
+// Two-factor sign-in: a 2FA-protected account gets a challenge instead of a token
+const signIn = await signalHouse.auth.login({ email, password, deviceToken: savedDeviceToken });
+if (signIn.success && signIn.data.mfaRequired) {
+  const { challengeId } = signIn.data;
+  await signalHouse.auth.sendTwoFactorChallengeCode({ challengeId, method: "email" }); // not needed for "app"
+  const verified = await signalHouse.auth.verifyTwoFactorChallenge({ challengeId, code: "418502", rememberDevice: true });
+  console.log(verified.data.token, verified.data.deviceToken); // keep deviceToken to skip 2FA next time
+}
+
+// Sign in with a provider: send the browser to the authorization URL...
+window.location.href = signalHouse.auth.getOAuthAuthorizationUrl({ provider: "google" });
+
+// ...then, on the page the API redirects back to with ?ticket=...
+const ticket = await signalHouse.auth.readOAuthTicket({ ticket: ticketFromUrl });
+if (ticket.success && ticket.data.kind === "session") {
+  const { data } = await signalHouse.auth.exchangeOAuthTicket({ ticket: ticketFromUrl });
+  console.log(data.token);
 }
 ```
 
@@ -202,8 +246,6 @@ const transactions = await signalHouse.billing.getTransactionHistory({
 | `getBusinessVerification` | `{ groupId, businessVerificationId }` | Get one of a group's business verifications by its ID, plus `required`. Returns 404 when it isn't one of the group's |
 | `createBusinessVerification` | `{ groupId, subgroupId, details }` | Create and submit a new business verification (`subgroupId` works as it does for `getBusinessVerifications`, and the subgroup must also be active). Review usually takes 1–2 business days. Once it is `VERIFIED`, a new toll-free brand uses it by sending its ID as `tollFree.businessVerificationId`; the brand's legal fields are then optional and come from the business verification. A group whose toll-free brands need a business verification must send one; any other group gets 400 if it does. Returns 202 with the business verification, status `SUBMITTING` |
 | `updateBusinessVerification` | `{ groupId, businessVerificationId, details }` | Correct and resubmit a business verification. Allowed only while its status is `NEEDS_CHANGES` (400 otherwise). Review usually takes 1–2 business days; the toll-free brands that use it stay pending until it is verified. Returns 202 with the business verification, status `SUBMITTING` |
-| `getTollFreeIsvAccount` | `{ groupId }` | Staff only. Get a group's toll-free ISV account: the group's own top-level account at the toll-free provider, used when its subgroups are separate businesses. Returns `{ groupId, accountSid, apiKeySid, primaryProfileSid, createdAt, updatedAt }`, or `null` when the group has none. The API key secret is never returned |
-| `setTollFreeIsvAccount` | `{ groupId, accountSid, apiKeySid, apiKeySecret }` | Staff only (`signalhouse_admin`). Register a group's toll-free ISV account, or replace the API key of the account it already has. The toll-free provider checks the account and key before they are stored. Register it before the group has any toll-free records at the provider; after that, only the API key of the same account can be replaced. Returns the `getTollFreeIsvAccount` shape, never the secret |
 | `updateBrand` | `{ brandId, brandData }` | Update brand information |
 | `deleteBrand` | `{ brandId }` | Delete (soft) a brand |
 | `transferBrand` | `{ subgroupId, brandIds }` | Transfer brands to a different subgroup |
@@ -287,6 +329,12 @@ await signalHouse.campaigns.updateCampaign({
 |--------|-----------|-------------|
 | `getGroup` | `{ id }` | Get group details by ID |
 | `updateGroup` | `{ id, groupData }` | Update group information |
+| `getSsoConfiguration` | `{ groupId }` | Enterprise SSO configuration: identity provider (no secret), domains with TXT records, redirect URL |
+| `saveSsoConnection` | `{ groupId, issuer, clientId, clientSecret, enabled }` | Create or update the OpenID Connect identity provider (needs a fresh `auth.confirmTwoFactorIdentity`) |
+| `deleteSsoConnection` | `{ groupId }` | Remove the identity provider and its domains (needs a fresh `auth.confirmTwoFactorIdentity`) |
+| `addSsoDomain` | `{ groupId, domain }` | Claim an email domain; returns its TXT record |
+| `verifySsoDomain` | `{ groupId, domain }` | Verify a claimed domain by DNS |
+| `removeSsoDomain` | `{ groupId, domain }` | Remove a domain from SSO |
 
 ```javascript
 // Get group details
