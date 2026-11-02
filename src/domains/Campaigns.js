@@ -434,6 +434,22 @@ export class Campaigns {
   }
 
   /**
+   * Get today's T-Mobile usage against the daily limit for every active campaign in a group that has one. The same limits and counter as getCampaignThroughputLimits, for the whole group in one call.
+   * @async
+   * @roles api, admin, developer, billing, user
+   * @param {Object} params - Parameters for reading group throughput usage
+   * @param {string} params.groupId - Group identifier
+   * @param {RequestOptions} [params.options] - Additional request options
+   * @throws {Error} Throws an error if the groupId parameter is missing
+   * @returns {Promise<SdkResponse<any>>} A promise that resolves to `[{ campaignId, brandId, brandName, usecase, tmobile: { tier, dailyLimit, usedToday: { date, segments, resetsAt } } }]`. Campaigns without a T-Mobile limit (unverified brand, GOVERNMENT entity, PUBLIC_SAFETY_RESTRICTED usecase) are left out. The counter is per brand EIN and UTC day, so every campaign of a brand shows the same usage; a LOW_VOLUME campaign's limit is 2,000 whatever the brand's score.
+   */
+  async getGroupThroughputUsage({ groupId, options = {} }) {
+    this.client._require({ groupId });
+    const queryString = this.client._getQueryString({ groupId });
+    return this.client(`/campaign/throughput-usage${queryString}`, { method: 'GET', ...options });
+  }
+
+  /**
    * Create a new campaign
    * @async
    * @roles api, admin, developer, billing, user

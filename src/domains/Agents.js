@@ -122,7 +122,7 @@
  * @property {string} inboundText - The contact message the agent was answering.
  * @property {string} draftText - The reply as the agent wrote it.
  * @property {string|null} sentText - The text actually sent; differs from draftText when edited.
- * @property {string} reason - Why it was held: "review_mode", "escalation", "fallback" or "guardrail", or "autopilot" for a confident auto-pilot reply that its channel delivers without a person.
+ * @property {string} reason - Why it was held: "review_mode", "escalation", "fallback", "guardrail" or "quiet_hours" (an auto-pilot reply written between 9 pm and 9 am in the contact's time zone), or "autopilot" for a confident auto-pilot reply that its channel delivers without a person.
  * @property {string} status - "pending", "sending", "sent", "rejected" or "failed" (the send path accepted nothing, e.g. the contact opted out).
  * @property {string|null} decidedBy - The user who approved or rejected it.
  * @property {string|null} decidedAt - When it was approved or rejected.

@@ -123,7 +123,7 @@ AUTH  (signalHouse.auth)
   createOAuthReauth({ provider })
     Start signing in again with a provider already linked to your account,
     to confirm it's you. Sends a POST to /auth/oauth/:provider/reauth
-    ("google", "microsoft", "apple" or "sso"). Returns a 2-minute
+    ("microsoft", "apple" or "sso"; Google is refused with 400). Returns a 2-minute
     reauthTicket for getOAuthAuthorizationUrl and a reauthSecret to keep for
     confirmOAuthReauth; the browser comes back to
     /Settings/Security with a single-use pendingReauth (the session that
@@ -149,7 +149,7 @@ AUTH  (signalHouse.auth)
     was started for.
 
   deleteOAuthLink({ provider })
-    Unlink a provider. Refused when it is your only way to sign in. Needs a
+    Unlink a provider. Refused when it is your only way to sign in. With 2FA on and no password, the last linked Microsoft, Apple or SSO sign-in is refused (400) too. Needs a
     fresh confirmTwoFactorIdentity.
 
   readOAuthTicket({ ticket })

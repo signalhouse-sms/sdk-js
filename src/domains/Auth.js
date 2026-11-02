@@ -322,7 +322,8 @@ export class Auth {
 	 * @async
 	 * @roles admin, developer, billing, user
 	 * @param {Object} params
-	 * @param {string} params.provider - "google", "microsoft", "apple" or "sso"; must be linked to the account
+	 * @param {string} params.provider - "microsoft", "apple" or "sso"; must be linked to the account. Google is
+	 *   refused with a 400 because it can't confirm a fresh sign-in; confirm with a code instead
 	 * @param {import('../SignalHouseSDK.js').RequestOptions} [params.options] - Additional options for the request
 	 * @returns {Promise<Object>} The response from the server ({ reauthTicket, reauthSecret, expiresInSeconds }). Keep
 	 *   `reauthSecret` in the client that started the flow: it is returned only here, and confirmOAuthReauth needs it
@@ -367,7 +368,7 @@ export class Auth {
 	}
 
 	/**
-	 * Unlink a provider from the caller's account. Refused when it is the account's only way to sign in.
+	 * Unlink a provider from the caller's account. Refused when it is the account's only way to sign in. With 2FA on and no password, the last linked Microsoft, Apple or SSO sign-in is refused (400) too.
 	 * Requires a fresh confirmTwoFactorIdentity from the same session.
 	 * @async
 	 * @roles admin, developer, billing, user
