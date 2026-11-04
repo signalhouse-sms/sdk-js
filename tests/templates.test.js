@@ -21,12 +21,12 @@ const params = (path) => Object.fromEntries(new URL(path, "https://example.com")
 const pathname = (path) => new URL(path, "https://example.com").pathname;
 const wire = (body) => JSON.parse(JSON.stringify(body));
 
-const rcsBody = { channel: "rcs", contentFormat: "rcs.blocks.v1", content: { blocks: [{ id: "b1", kind: "text", text: "Hi {{first_name}}" }] }, variables: [{ key: "first_name", type: "text", required: true }] };
+const rcsBody = { channel: "rcs", contentFormat: "content.v1", content: { blocks: [{ id: "b1", kind: "text", text: "Hi {{first_name}}" }] }, variables: [{ key: "first_name", type: "text", required: true }] };
 
 const doors = [
 	{
 		name: "templates", Domain: Templates, base: "/template",
-		m: { create: "create", list: "list", get: "get", update: "update", publish: "publish", archive: "archive", versions: "versions", validate: "validate", capabilities: "capabilities", uploadMedia: "uploadMedia" },
+		m: { create: "create", list: "list", get: "get", update: "update", publish: "publish", archive: "archive", versions: "versions", validate: "validate", capabilities: "capabilities", geocodeAddress: "geocodeAddress", uploadMedia: "uploadMedia" },
 	},
 ];
 
@@ -156,6 +156,16 @@ for (const { name, Domain, base, m } of doors) {
 		const expected = { groupId: "G0000001", provider: "sinch" };
 		assert.deepEqual(params(calls[0].path), { ...expected, channel: "rcs" });
 		await assert.rejects(domain[m.capabilities]({}), /groupId/);
+	});
+
+	test(`${name}: geocodeAddress reads with groupId and address, and requires both`, async () => {
+		const { domain, calls } = setup();
+		await domain[m.geocodeAddress]({ groupId: "G0000001", address: "88 Lakeshore Drive, Chicago" });
+		assert.equal(pathname(calls[0].path), `${base}/geocode`);
+		assert.equal(calls[0].request.method, "GET");
+		assert.deepEqual(params(calls[0].path), { groupId: "G0000001", address: "88 Lakeshore Drive, Chicago" });
+		await assert.rejects(domain[m.geocodeAddress]({ address: "x" }), /groupId/);
+		await assert.rejects(domain[m.geocodeAddress]({ groupId: "G0000001" }), /address/);
 	});
 
 	test(`${name}: uploadMedia posts a FormData with file and groupId through the multipart client`, async () => {

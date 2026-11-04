@@ -25,8 +25,12 @@
  * suggestion and fallback shapes.
  * @typedef {Object} RcsTemplateBody
  * @property {"rcs"} channel - Always "rcs"
- * @property {"rcs.blocks.v1"} contentFormat - Always "rcs.blocks.v1"
- * @property {{ blocks: Object[] }} content - Ordered blocks of kind text, richCard, video, carousel, suggestions or attachment
+ * @property {"content.v1"|"google.rcs"} [contentFormat] - The format of `content`. Omitted means "content.v1", the block
+ *   contract, which is the only format the API stores and returns. "google.rcs" sends Google's RBM AgentContentMessage
+ *   as `content`; the API converts it to "content.v1" before validating or storing it
+ * @property {{ blocks: Object[] }|Object} content - For "content.v1", ordered blocks of kind text, richCard, video, carousel,
+ *   suggestions or attachment (a VIEW_LOCATION suggestion takes latitude and longitude, or an address the API geocodes).
+ *   For "google.rcs", the AgentContentMessage: one of text, richCard or contentInfo, plus suggestions
  * @property {RcsVariable[]} [variables] - Declared placeholders; omitted means []
  * @property {{ trafficType?: string, ttlSeconds?: number }} [defaults] - Send defaults; omitted means {}
  * @property {{ delivery?: { channel: "sms"|"mms", campaignId?: string, phoneNumber?: string, content: Object }, validitySeconds?: number }} [fallback] - SMS/MMS sent when RCS cannot be delivered; no delivery means no fallback
@@ -115,7 +119,8 @@
  * Server-defined channel capabilities; values come from the server and drive client-side editors.
  * @typedef {Object} Capabilities
  * @property {"rcs"} channel - The channel described
- * @property {"rcs.blocks.v1"} contentFormat - The body format
+ * @property {"content.v1"} contentFormat - The format every body is stored and returned in
+ * @property {string[]} contentFormats - Every format a body may be sent in ("content.v1", "google.rcs")
  * @property {string} validatorVersion - The validator version
  * @property {string[]} blockKinds - Allowed block kinds
  * @property {string[]} actionTypes - Allowed suggestion types
@@ -125,7 +130,17 @@
  * @property {string[]} mediaHeights - Allowed card media heights
  * @property {Object<string, number>} limits - Length and count limits (maxBlocks, maxTextLength, maxCarouselCards, ...)
  * @property {{ maxUploadBytes: number, mimeTypes: string[] }} media - Upload constraints
+ * @property {{ available: boolean }} geocoding - Whether this server resolves VIEW_LOCATION addresses (geocodeAddress answers 503 when false)
  * @property {{ provider: "infobip"|"sinch", adapterVersion: string, limits: Object<string, number>, unsupported: Array<{ feature: string, code: string, message: string }> }|null} provider - Provider-specific limits when a provider was requested
+ */
+
+/**
+ * The best match for an address.
+ * @typedef {Object} GeocodeResult
+ * @property {string} address - The provider's formatted address
+ * @property {number} latitude - Latitude
+ * @property {number} longitude - Longitude
+ * @property {boolean} partialMatch - True when the provider matched only part of the address
  */
 
 /**
@@ -379,6 +394,22 @@ export class Templates {
 		this.client._require({ groupId });
 		const queryString = this.client._getQueryString({ groupId, channel, provider });
 		return this.client(`/template/capabilities${queryString}`, { method: "GET", ...options });
+	}
+
+	/**
+	 * Resolve an address to coordinates for a VIEW_LOCATION suggestion. 400 with code LOCATION_NOT_FOUND when nothing matches; 429 past the group's lookup window; 503 when the server has no geocoding provider
+	 * @async
+	 * @roles api, admin, developer
+	 * @param {Object} params - The parameters for the lookup
+	 * @param {string} params.groupId - The owning group
+	 * @param {string} params.address - The address to resolve (1-512 characters)
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<GeocodeResult>>} A promise that resolves to the best match
+	 */
+	async geocodeAddress({ groupId, address, options = {} }) {
+		this.client._require({ groupId, address });
+		const queryString = this.client._getQueryString({ groupId, address });
+		return this.client(`/template/geocode${queryString}`, { method: "GET", ...options });
 	}
 
 	/**

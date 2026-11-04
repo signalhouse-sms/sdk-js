@@ -260,69 +260,44 @@ test("setTollFreeProvider puts the provider on the group's onboarding record and
 	assert.equal(calls.length, 1);
 });
 
-test("getBusinessVerifications lists the group's business verifications and requires groupId", async () => {
+test("getTollFreeRequirements gets the group's toll-free requirements and requires groupId", async () => {
 	const { client, calls } = captureClient();
 	const domain = new Brands(client);
-	await domain.getBusinessVerifications({ groupId: "G 1", options: { token: "session" } });
-	assert.equal(calls[0].path, "/brand/business-verification/G%201");
+	await domain.getTollFreeRequirements({ groupId: "G 1", options: { token: "session" } });
+	assert.equal(calls[0].path, "/brand/toll-free-requirements/G%201");
 	assert.equal(calls[0].request.method, "GET");
 	assert.equal("body" in calls[0].request, false);
 	assert.equal(calls[0].request.token, "session");
-	await assert.rejects(domain.getBusinessVerifications({}), /groupId/);
+	await assert.rejects(domain.getTollFreeRequirements({}), /groupId/);
 	assert.equal(calls.length, 1);
 });
 
-test("createBusinessVerification posts the details as the body and requires groupId and details", async () => {
-	const { client, calls } = captureClient();
-	const domain = new Brands(client);
-	const details = {
-		businessName: "Acme Inc", businessType: "CORPORATION", industry: "RETAIL", registrationType: "EIN", registrationNumber: "12-3456789",
-		website: "https://acme.example", street: "1 Main St", city: "Austin", state: "TX", postalCode: "78701", country: "US",
-		representative: { firstName: "Ada", lastName: "Lee", email: "ada@acme.example", phone: "+15125550100", jobTitle: "Owner", jobLevel: "CEO" },
-	};
-	await domain.createBusinessVerification({ groupId: "G 1", details, options: { token: "session" } });
-	assert.equal(calls[0].path, "/brand/business-verification/G%201");
-	assert.equal(calls[0].request.method, "POST");
-	assert.deepEqual(calls[0].request.body, details);
-	assert.equal(calls[0].request.token, "session");
-	await assert.rejects(domain.createBusinessVerification({ groupId: "G 1" }), /details/);
-	await assert.rejects(domain.createBusinessVerification({ details }), /groupId/);
-	assert.equal(calls.length, 1);
-});
-
-test("getBusinessVerification reads one business verification by its ID and requires both IDs", async () => {
-	const { client, calls } = captureClient();
-	const domain = new Brands(client);
-	await domain.getBusinessVerification({ groupId: "G 1", businessVerificationId: "BV 1/2", options: { token: "session" } });
-	assert.equal(calls[0].path, "/brand/business-verification/G%201/BV%201%2F2");
-	assert.equal(calls[0].request.method, "GET");
-	assert.equal("body" in calls[0].request, false);
-	assert.equal(calls[0].request.token, "session");
-	await assert.rejects(domain.getBusinessVerification({ businessVerificationId: "BV1" }), /groupId/);
-	await assert.rejects(domain.getBusinessVerification({ groupId: "G 1" }), /businessVerificationId/);
-	assert.equal(calls.length, 1);
-});
-
-test("updateBusinessVerification puts the details on the business verification's path and requires every argument", async () => {
-	const { client, calls } = captureClient();
-	const domain = new Brands(client);
-	const details = { businessName: "Acme Inc", registrationType: "EIN", registrationNumber: "12-3456789" };
-	await domain.updateBusinessVerification({ groupId: "G 1", businessVerificationId: "BV 1/2", details, options: { token: "session" } });
-	assert.equal(calls[0].path, "/brand/business-verification/G%201/BV%201%2F2");
-	assert.equal(calls[0].request.method, "PUT");
-	assert.deepEqual(calls[0].request.body, details);
-	assert.equal(calls[0].request.token, "session");
-	await assert.rejects(domain.updateBusinessVerification({ businessVerificationId: "BV1", details }), /groupId/);
-	await assert.rejects(domain.updateBusinessVerification({ groupId: "G 1", details }), /businessVerificationId/);
-	await assert.rejects(domain.updateBusinessVerification({ groupId: "G 1", businessVerificationId: "BV1" }), /details/);
-	assert.equal(calls.length, 1);
-});
-
-test("submitBusinessVerification is gone: createBusinessVerification and updateBusinessVerification replace it", () => {
+test("submitBusinessVerification and the four methods that replaced it are gone", () => {
 	const domain = new Brands(captureClient().client);
 	assert.equal("submitBusinessVerification" in domain, false);
-	assert.equal(typeof domain.createBusinessVerification, "function");
-	assert.equal(typeof domain.updateBusinessVerification, "function");
+	for (const method of ["getBusinessVerifications", "getBusinessVerification", "createBusinessVerification", "updateBusinessVerification"]) {
+		assert.equal(method in domain, false, method);
+	}
+});
+
+test("createTollFreeBrand posts the brand, with its toll-free business details, as the body", async () => {
+	const { client, calls } = captureClient();
+	const domain = new Brands(client);
+	const brandData = {
+		subgroupId: "S0000001", displayName: "Acme", companyName: "Acme Inc", street: "1 Main St", city: "Austin", state: "TX", postalCode: "78701",
+		email: "support@acme.example", firstName: "Ada", lastName: "Lee", website: "https://acme.example",
+		tollFree: {
+			businessRegistrationType: "EIN", legalEntityType: "PRIVATE_COMPANY", taxId: "12-3456789", countryCode: "US", supportPhone: "15125550100",
+			businessStructure: "CORPORATION", industry: "RETAIL", contactEmail: "ada@acme.example", contactJobTitle: "Owner", contactJobLevel: "CEO",
+		},
+	};
+	await domain.createTollFreeBrand({ brandData, options: { token: "session" } });
+	assert.equal(calls[0].path, "/brand/toll-free");
+	assert.equal(calls[0].request.method, "POST");
+	assert.deepEqual(calls[0].request.body, brandData);
+	assert.equal(calls[0].request.token, "session");
+	await assert.rejects(domain.createTollFreeBrand({}), /brandData/);
+	assert.equal(calls.length, 1);
 });
 
 test("getTollFreeOrderStatus sends groupId only when it is given", async () => {
@@ -336,43 +311,6 @@ test("getTollFreeOrderStatus sends groupId only when it is given", async () => {
 	assert.equal(pathname(calls[1].path), "/number/toll-free/order/TFNO%201");
 	assert.deepEqual(Object.fromEntries(params(calls[1].path)), { groupId: "G0000001" });
 	await assert.rejects(domain.getTollFreeOrderStatus({ groupId: "G0000001" }), /orderId/);
-	assert.equal(calls.length, 2);
-});
-
-test("getBusinessVerifications sends subgroupId as a query parameter only when it is given", async () => {
-	const { client, calls } = captureClient();
-	const domain = new Brands(client);
-	await domain.getBusinessVerifications({ groupId: "G 1", subgroupId: "S0000001", options: { token: "session" } });
-	assert.equal(calls[0].path, "/brand/business-verification/G%201?subgroupId=S0000001");
-	assert.equal(calls[0].request.method, "GET");
-	assert.equal("body" in calls[0].request, false);
-	assert.equal(calls[0].request.token, "session");
-	await domain.getBusinessVerifications({ groupId: "G 1" });
-	assert.equal(calls[1].path, "/brand/business-verification/G%201");
-	await domain.getBusinessVerifications({ groupId: "G 1", subgroupId: undefined });
-	assert.equal(calls[2].path, "/brand/business-verification/G%201");
-	await assert.rejects(domain.getBusinessVerifications({ subgroupId: "S0000001" }), /groupId/);
-	assert.equal(calls.length, 3);
-});
-
-test("createBusinessVerification sends subgroupId as a query parameter only when it is given and keeps the details as the body", async () => {
-	const { client, calls } = captureClient();
-	const domain = new Brands(client);
-	const details = {
-		businessName: "Acme Inc", businessType: "CORPORATION", industry: "RETAIL", registrationType: "EIN", registrationNumber: "12-3456789",
-		website: "https://acme.example", street: "1 Main St", city: "Austin", state: "TX", postalCode: "78701", country: "US",
-		representative: { firstName: "Ada", lastName: "Lee", email: "ada@acme.example", phone: "+15125550100", jobTitle: "Owner", jobLevel: "CEO" },
-	};
-	await domain.createBusinessVerification({ groupId: "G 1", subgroupId: "S0000001", details, options: { token: "session" } });
-	assert.equal(calls[0].path, "/brand/business-verification/G%201?subgroupId=S0000001");
-	assert.equal(calls[0].request.method, "POST");
-	assert.deepEqual(calls[0].request.body, details);
-	assert.equal("subgroupId" in calls[0].request.body, false);
-	assert.equal(calls[0].request.token, "session");
-	await domain.createBusinessVerification({ groupId: "G 1", details });
-	assert.equal(calls[1].path, "/brand/business-verification/G%201");
-	assert.deepEqual(calls[1].request.body, details);
-	await assert.rejects(domain.createBusinessVerification({ groupId: "G 1", subgroupId: "S0000001" }), /details/);
 	assert.equal(calls.length, 2);
 });
 

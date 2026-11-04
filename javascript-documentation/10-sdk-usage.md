@@ -93,6 +93,7 @@ The SDK organizes API endpoints into domain namespaces:
 | `signalHouse.subgroups` | Subgroup CRUD operations |
 | `signalHouse.subscriptions` | Subscription plan management |
 | `signalHouse.templates` | Channel-generic message templates: drafts, versions, publish, validation, media |
+| `signalHouse.rcs.agents` | RCS agents linked to a 10DLC brand and campaign: drafts, validate, submit, images |
 | `signalHouse.users` | User management, service users |
 | `signalHouse.webhooks` | Webhook registration and management |
 
@@ -240,12 +241,10 @@ const transactions = await signalHouse.billing.getTransactionHistory({
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `getBrands` | `{ id, subgroupId, groupId, page, limit, status, registrationType, currentTollFreeCarrier }` | List brands with filters. With `subgroupId` or `groupId`, `currentTollFreeCarrier: true` returns only toll-free brands that a new toll-free campaign in that group can use. Staff roles listing every brand (no id/subgroupId/groupId) may also pass `search`, `sortBy`, `sortOrder`, `entityType`, `ein`, `email`, `referenceId`, `groupIds`, `createdFrom`, `createdTo`, `excludeDeleted`, and get `{ data, total, page, limit, totalPages }` back when paging |
+| `getBrands` | `{ id, subgroupId, groupId, page, limit, status, registrationType, currentTollFreeCarrier }` | List brands with filters. With `subgroupId` or `groupId`, `currentTollFreeCarrier: true` returns only toll-free brands that a new toll-free campaign in that group can use. Staff roles listing every brand (no id/subgroupId/groupId) may also pass `search`, `sortBy`, `sortOrder`, `entityType`, `ein`, `email`, `referenceId`, `groupIds`, `createdFrom`, `createdTo`, `excludeDeleted`, and get `{ data, total, page, limit, totalPages }` back when paging. A toll-free brand's `tollFree.reviewsBusinessOnSubmit` says whether it's reviewed when it's submitted and keeps its business details from then on; such a brand also carries its `tollFree.businessStructure`, `industry`, `contactEmail`, `contactJobTitle` and `contactJobLevel`, and `tollFree.rejectionReason` (why its review rejected it, in plain English, or null) |
 | `createBrand` | `{ brandData }` | Create a new 10DLC brand |
-| `getBusinessVerifications` | `{ groupId, subgroupId }` | List a group's business verifications, newest first: `{ groupId, subgroupId?, required, businessVerifications }`. `required` says whether its toll-free brands need one. Each business verification carries `businessVerificationId`, `groupId`, `subgroupId?`, `status` (`SUBMITTING`, `IN_REVIEW`, `VERIFIED` or `NEEDS_CHANGES`), the submitted `details`, `submittedAt`, `reviewedAt` and `rejectionReason`. Some groups verify each subgroup's business separately: a platform whose subgroups are separate businesses, set up by Signal House. For those groups `subgroupId` is required, and the list is that subgroup's business verifications, carrying `subgroupId`. For any other group `subgroupId` is optional, must be one of the group's subgroups, and is otherwise ignored. `subgroupId` is sent as a query parameter only when given |
-| `getBusinessVerification` | `{ groupId, businessVerificationId }` | Get one of a group's business verifications by its ID, plus `required`. Returns 404 when it isn't one of the group's |
-| `createBusinessVerification` | `{ groupId, subgroupId, details }` | Create and submit a new business verification (`subgroupId` works as it does for `getBusinessVerifications`, and the subgroup must also be active). Review usually takes 1–2 business days. Once it is `VERIFIED`, a new toll-free brand uses it by sending its ID as `tollFree.businessVerificationId`; the brand's legal fields are then optional and come from the business verification. A group whose toll-free brands need a business verification must send one; any other group gets 400 if it does. Returns 202 with the business verification, status `SUBMITTING` |
-| `updateBusinessVerification` | `{ groupId, businessVerificationId, details }` | Correct and resubmit a business verification. Allowed only while its status is `NEEDS_CHANGES` (400 otherwise). Review usually takes 1–2 business days; the toll-free brands that use it stay pending until it is verified. Returns 202 with the business verification, status `SUBMITTING` |
+| `createTollFreeBrand` | `{ brandData }` | Create a new toll-free brand; the toll-free details go under `brandData.tollFree`. When the group's toll-free brands are reviewed on submit (see `getTollFreeRequirements`), `brandData.tollFree` also needs `businessStructure`, `industry`, `contactEmail`, `contactJobTitle` and `contactJobLevel`, `tollFree.countryCode` must be `US` or `CA`, and `state` must be a 2-letter state or province code; any other group gets 400 if it sends any of those five. Such a brand stays `DCA_PENDING` until it's reviewed (usually 1–2 business days), then becomes `DCA_ACTIVE`, or `DCA_REJECTED` with `tollFree.rejectionReason` saying why. Its business details can't be changed after it's submitted, so a rejected brand is fixed by creating it again with the corrections. Returns 202 with the new brand |
+| `getTollFreeRequirements` | `{ groupId }` | Get whether a group's new toll-free brands are reviewed when they're submitted: `{ groupId, reviewsBusinessOnSubmit }`. When `reviewsBusinessOnSubmit` is true, `createTollFreeBrand` needs `tollFree.businessStructure`, `industry`, `contactEmail`, `contactJobTitle` and `contactJobLevel`, a `tollFree.countryCode` of `US` or `CA` and a 2-letter state or province code; when it's false, those five fields are refused |
 | `updateBrand` | `{ brandId, brandData }` | Update brand information |
 | `deleteBrand` | `{ brandId }` | Delete (soft) a brand |
 | `transferBrand` | `{ subgroupId, brandIds }` | Transfer brands to a different subgroup |
@@ -458,7 +457,7 @@ const analytics = await signalHouse.messages.getAnalytics({
 
 ### Templates
 
-Channel-generic templates under `/template` (today the only channel is `"rcs"`). Each template has an immutable published version and at most one editable draft. Every call takes `groupId`. Writes apply directly (last write wins); 409 codes are `TEMPLATE_ARCHIVED`, `TEMPLATE_NAME_TAKEN`, `NO_DRAFT` (publish with no draft) and `DRAFT_CHANGED` (publish only: the draft changed while it was being published; publish again). Returns 404 while RCS is disabled for the environment. Bodies are the raw `RcsTemplateBody` (`channel: "rcs"`, `contentFormat: "rcs.blocks.v1"`, `content.blocks`, `variables`, `defaults`, `fallback`); the SDK never converts them. A `version` selector is a positive integer, `"draft"` or `"published"`; omitted means the published version, else the draft.
+Channel-generic templates under `/template` (today the only channel is `"rcs"`). Each template has an immutable published version and at most one editable draft. Every call takes `groupId`. Writes apply directly (last write wins); 409 codes are `TEMPLATE_ARCHIVED`, `TEMPLATE_NAME_TAKEN`, `NO_DRAFT` (publish with no draft) and `DRAFT_CHANGED` (publish only: the draft changed while it was being published; publish again). Returns 404 while RCS is disabled for the environment. Bodies are the raw `RcsTemplateBody` (`channel: "rcs"`, optional `contentFormat`, `content`, `variables`, `defaults`, `fallback`); the SDK never converts them. `contentFormat` defaults to `"content.v1"`, the block contract (`content.blocks`) and the only format the API stores and returns; `"google.rcs"` sends Google's RBM `AgentContentMessage` as `content`, which the API converts to `content.v1`. A `VIEW_LOCATION` suggestion takes `latitude` and `longitude`, or an `address` the API geocodes. A `version` selector is a positive integer, `"draft"` or `"published"`; omitted means the published version, else the draft.
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
@@ -470,13 +469,13 @@ Channel-generic templates under `/template` (today the only channel is `"rcs"`).
 | `archive` | `{ templateId, groupId }` | Archive a template; returns the head |
 | `versions` | `{ templateId, groupId, page, limit }` | List versions without bodies |
 | `validate` | `{ templateId, groupId, body, version }` | Validate exactly one of an unsaved `body` or a stored `version`; writes nothing |
-| `capabilities` | `{ groupId, channel, provider }` | Allowed blocks, actions, limits and upload constraints; `provider` (`infobip`/`sinch`) adds provider limits |
+| `capabilities` | `{ groupId, channel, provider }` | Allowed blocks, actions, limits, accepted `contentFormats`, whether `geocoding` is available, and upload constraints; `provider` (`infobip`/`sinch`) adds provider limits |
+| `geocodeAddress` | `{ groupId, address }` | Resolve an address to `{ address, latitude, longitude, partialMatch }` for a `VIEW_LOCATION` suggestion; 400 `LOCATION_NOT_FOUND` when nothing matches, 429 past the group's lookup window, 503 when the server has no geocoding provider |
 | `uploadMedia` | `{ groupId, file, fileName }` | Upload a `Blob`/`File` (multipart); returns `{ mediaId, url, ... }` |
 
 ```javascript
 const body = {
   channel: "rcs",
-  contentFormat: "rcs.blocks.v1",
   content: { blocks: [{ id: "intro", kind: "text", text: "Hi {{first_name}}" }] },
   variables: [{ key: "first_name", type: "text", required: true }],
 };
@@ -500,6 +499,38 @@ await signalHouse.templates.publish({
   templateId: head.templateId,
   groupId: "G0000001",
 });
+```
+
+---
+
+### RCS agents
+
+`signalHouse.rcs.agents` manages RCS agents under `/rcs/agent`. An agent links one 10DLC brand and one 10DLC campaign. The campaign's numbers are its SMS fallback, and the brand and campaign supply the company identity and consent text for the carrier launch. One brand or campaign can serve many agents. An agent is a registration (`RCS_AGENT`, `agentId` = `registrationId`, `RCSA` + 10 characters). Returns 404 while RCS is disabled for the environment and 400 while the group's `rcsEnabled` flag is off. To use a new brand and campaign, create the brand, wait until it is `VERIFIED`, create the campaign, then link them.
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `create` | `{ brandId, campaignId, agent, consent, useCase, billingCategory, defaultFallback, excludedCarriers, testers }` | Create a draft in the brand's subgroup; blank `consent` fields fill from the campaign |
+| `list` | `{ groupId, subgroupId, status, brandId, campaignId, page, limit }` | List agents; `brandId`/`campaignId` return the agents linked to that record; returns `{ data, total, page, limit }` |
+| `get` | `{ agentId }` | One agent with `links.brand.state` (`OK`, `NOT_VERIFIED`, `MISSING`) and `links.campaign.state` (`OK`, `NOT_ACTIVE`, `MISSING`, `NONE`) |
+| `update` | `{ agentId, ...fields }` | Edit a `DRAFT` or `REJECTED` agent; `agent` and `consent` merge field by field; `campaignId: null` unlinks |
+| `validate` | `{ agentId }` | Returns `{ valid, errors, warnings }`; writes nothing |
+| `submit` | `{ agentId }` | Submit for review; 400 `REGISTRATION_INCOMPLETE` with the errors when a requirement is missing |
+| `archive` | `{ agentId }` | Archive the agent |
+| `resendTesterInvite` | `{ agentId, phoneNumber }` | Resend a tester's expired invitation |
+| `uploadAsset` | `{ agentId, kind, file, fileName }` | Host a `logo` (224 × 224 px, 50 KB) or `hero` (1440 × 448 px, 200 KB) PNG/JPEG and set it on the draft |
+
+```javascript
+const created = await signalHouse.rcs.agents.create({
+  brandId: "B1A2C3D",
+  campaignId: "C4E5F6G",
+  agent: { name: "Acme Alerts", description: "Order alerts from Acme" },
+  useCase: "TRANSACTIONAL",
+  options: { idempotencyKey: crypto.randomUUID() },
+});
+const { agentId } = created.data;
+
+const check = await signalHouse.rcs.agents.validate({ agentId });
+if (check.data.valid) await signalHouse.rcs.agents.submit({ agentId });
 ```
 
 ---

@@ -33,6 +33,7 @@ import { Groups } from "./domains/Groups.js";
 import { Landings } from "./domains/Landings.js";
 import { Messages } from "./domains/Messages.js";
 import { Templates } from "./domains/Templates.js";
+import { Rcs } from "./domains/Rcs.js";
 import { Numbers } from "./domains/Numbers.js";
 import { Registrations } from "./domains/Registrations.js";
 import { Onboarding } from "./domains/Onboarding.js";
@@ -80,6 +81,7 @@ export class SignalHouseSDK {
 		this.landings = new Landings(client, multipartClient, this.enableAdmin);
 		this.messages = new Messages(client, multipartClient, this.enableAdmin);
 		this.templates = new Templates(client, multipartClient, this.enableAdmin);
+		this.rcs = new Rcs(client, multipartClient);
 		this.numbers = new Numbers(client, multipartClient, this.enableAdmin);
 		this.registrations = new Registrations(client, this.enableAdmin);
 		this.onboarding = new Onboarding(client, this.enableAdmin);

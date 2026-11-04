@@ -70,50 +70,19 @@
 
 /**
  * @typedef {Object} TollFreeBrandDetails
- * @property {string} [businessRegistrationType] - The business registration type (required unless businessVerificationId is sent, one of EIN, CBN, NEQ, PROVINCIAL_NUMBER, CRN, VAT, ACN, ABN, BRN, SIREN, SIRET, NZBN, UST_IDNR, CIF, NIF, CNPJ, UID, OTHER)
+ * @property {string} businessRegistrationType - The business registration type (required, one of EIN, CBN, NEQ, PROVINCIAL_NUMBER, CRN, VAT, ACN, ABN, BRN, SIREN, SIRET, NZBN, UST_IDNR, CIF, NIF, CNPJ, UID, OTHER)
  * @property {string} legalEntityType - The legal entity type (required, one of PRIVATE_COMPANY, PUBLIC_COMPANY, NON_PROFIT, GOVERNMENT, SOLE_PROPRIETOR)
- * @property {string} [taxId] - The business tax identifier (required unless businessVerificationId is sent, at most 50 characters)
- * @property {string} [countryCode] - The business country code (required unless businessVerificationId is sent, 2-letter ISO code)
+ * @property {string} taxId - The business tax identifier (required, at most 50 characters)
+ * @property {string} countryCode - The business country code (required, 2-letter ISO code; "US" or "CA" when the group's toll-free brands are reviewed on submit)
  * @property {string} supportPhone - The customer-support phone number (required, E.164 with an optional leading "+" and no spaces, parentheses or hyphens, e.g. "17025550100")
  * @property {string} [taxIdIssuingCountry] - The country that issued the tax ID (optional, 2-letter ISO code)
  * @property {string} [businessDBA] - The business "doing business as" name (optional, at most 255 characters)
- * @property {string} [businessWebsite] - The customer's real website, sent to Infobip for brand verification (optional, valid URL, at most 255 characters; distinct from the top-level website / landing URL)
- * @property {string} [businessVerificationId] - The ID of the business verification the brand uses (starts with BV). Required for a group whose toll-free brands need a business verification, and must name a VERIFIED one of the brand's group (in a group that verifies each subgroup's business separately, of the brand's subgroup); refused (400) for any other group. Set at creation only: it can't be changed
- */
-
-/**
- * @typedef {Object} BusinessVerificationDetails
- * @property {string} businessName - The legal business name (required, at most 255 characters)
- * @property {string} businessType - The business type (required, one of CO_OPERATIVE, CORPORATION, LIMITED_LIABILITY_CORPORATION, NON_PROFIT_CORPORATION, PARTNERSHIP)
- * @property {string} industry - The business industry (required, one of AGRICULTURE, AUTOMOTIVE, BANKING, CONSTRUCTION, CONSUMER, EDUCATION, ELECTRONICS, ENGINEERING, ENERGY, FAST_MOVING_CONSUMER_GOODS, FINANCIAL, FINTECH, FOOD_AND_BEVERAGE, GOVERNMENT, HEALTHCARE, HOSPITALITY, INSURANCE, JEWELRY, LEGAL, MANUFACTURING, MEDIA, NOT_FOR_PROFIT, OIL_AND_GAS, ONLINE, PROFESSIONAL_SERVICES, RAW_MATERIALS, REAL_ESTATE, RELIGION, RETAIL, TECHNOLOGY, TELECOMMUNICATIONS, TRANSPORTATION, TRAVEL)
- * @property {string} registrationType - The business registration type (required, one of EIN, CBN, NEQ, PROVINCIAL_NUMBER, CRN, VAT, ACN, ABN, BRN, SIREN, SIRET, NZBN, UST_IDNR, CIF, NIF, CNPJ, UID, OTHER)
- * @property {string} registrationNumber - The business registration number, e.g. the EIN (required, at most 50 characters)
- * @property {string} website - The business website (required, valid URL, at most 255 characters)
- * @property {string} street - The business street address (required, at most 255 characters)
- * @property {string} [street2] - The second line of the street address (optional, at most 255 characters)
- * @property {string} city - The business city (required, at most 100 characters)
- * @property {string} state - The business state or province (required, 2-letter code)
- * @property {string} postalCode - The business postal code (required, at most 10 characters)
- * @property {string} country - The business country (required, "US" or "CA")
- * @property {Object} representative - The business's authorized representative (required)
- * @property {string} representative.firstName - The representative's first name (required, at most 100 characters)
- * @property {string} representative.lastName - The representative's last name (required, at most 100 characters)
- * @property {string} representative.email - The representative's email address (required, valid email, at most 100 characters)
- * @property {string} representative.phone - The representative's phone number (required, E.164 with an optional leading "+" and no spaces, parentheses or hyphens, e.g. "+17025550100")
- * @property {string} representative.jobTitle - The representative's job title (required, at most 100 characters)
- * @property {string} representative.jobLevel - The representative's job level (required, one of DIRECTOR, GM, VP, CEO, CFO, GENERAL_COUNSEL, OTHER)
- */
-
-/**
- * @typedef {Object} BusinessVerification
- * @property {string} businessVerificationId - The business verification's ID (starts with BV)
- * @property {string} groupId - The group it belongs to
- * @property {string} [subgroupId] - The subgroup whose business it verifies; present only in a group that verifies each subgroup's business separately
- * @property {string} status - SUBMITTING, IN_REVIEW, VERIFIED or NEEDS_CHANGES
- * @property {BusinessVerificationDetails} details - The submitted details
- * @property {string} submittedAt - When it was last submitted (ISO date)
- * @property {string|null} reviewedAt - When it was last reviewed (ISO date), or null
- * @property {string|null} rejectionReason - Why it needs changes, or null
+ * @property {string} [businessWebsite] - The customer's real website, sent to the toll-free carrier for verification (optional, valid URL, at most 255 characters; distinct from the top-level website / landing URL)
+ * @property {string} [businessStructure] - The business structure (one of CO_OPERATIVE, CORPORATION, LIMITED_LIABILITY_CORPORATION, NON_PROFIT_CORPORATION, PARTNERSHIP). Required when the group's toll-free brands are reviewed on submit; refused (400) otherwise
+ * @property {string} [industry] - The business industry (one of AGRICULTURE, AUTOMOTIVE, BANKING, CONSTRUCTION, CONSUMER, EDUCATION, ELECTRONICS, ENGINEERING, ENERGY, FAST_MOVING_CONSUMER_GOODS, FINANCIAL, FINTECH, FOOD_AND_BEVERAGE, GOVERNMENT, HEALTHCARE, HOSPITALITY, INSURANCE, JEWELRY, LEGAL, MANUFACTURING, MEDIA, NOT_FOR_PROFIT, OIL_AND_GAS, ONLINE, PROFESSIONAL_SERVICES, RAW_MATERIALS, REAL_ESTATE, RELIGION, RETAIL, TECHNOLOGY, TELECOMMUNICATIONS, TRANSPORTATION, TRAVEL). Required when the group's toll-free brands are reviewed on submit; refused (400) otherwise
+ * @property {string} [contactEmail] - The email address of the contact named by firstName and lastName (valid email, at most 100 characters). Required when the group's toll-free brands are reviewed on submit; refused (400) otherwise
+ * @property {string} [contactJobTitle] - The contact's job title (at most 100 characters). Required when the group's toll-free brands are reviewed on submit; refused (400) otherwise
+ * @property {string} [contactJobLevel] - The contact's job level (one of DIRECTOR, GM, VP, CEO, CFO, GENERAL_COUNSEL, OTHER). Required when the group's toll-free brands are reviewed on submit; refused (400) otherwise
  */
 
 /**
@@ -127,20 +96,23 @@
  */
 
 /**
- * Toll-free brand data. When tollFree.businessVerificationId is sent, the legal fields (companyName, street, city, state,
- * postalCode, country, firstName, lastName and tollFree's businessRegistrationType, taxId, countryCode and
- * taxIdIssuingCountry) are optional: the business verification's values replace any that are sent.
+ * Toll-free brand data. When the group's toll-free brands are reviewed on submit (see getTollFreeRequirements), tollFree
+ * also needs businessStructure, industry, contactEmail, contactJobTitle and contactJobLevel, tollFree.countryCode must be
+ * "US" or "CA", and state must be a 2-letter state or province code. Any other group is refused those five fields.
+ * Such a brand's business details can't be changed after it's submitted: companyName, street, city, state, postalCode,
+ * country, firstName, lastName and tollFree's businessRegistrationType, taxId, countryCode, taxIdIssuingCountry,
+ * businessStructure, industry, contactEmail, contactJobTitle and contactJobLevel.
  * @typedef {Object} CreateTollFreeBrandData
  * @property {string} subgroupId - The ID of the subgroup to create the brand under (required, exactly 8 characters)
  * @property {string} displayName - The display name for the brand (required, at most 255 characters)
- * @property {string} [companyName] - The company name for the brand (required unless tollFree.businessVerificationId is sent, at most 255 characters)
- * @property {string} [street] - The street address of the primary contact for the brand (required unless tollFree.businessVerificationId is sent, at most 255 characters)
- * @property {string} [city] - The city of the primary contact for the brand (required unless tollFree.businessVerificationId is sent, at most 100 characters)
- * @property {string} [state] - The state of the primary contact for the brand (required unless tollFree.businessVerificationId is sent, at most 20 characters; must be a valid 2-letter US state code when country is "US")
- * @property {string} [postalCode] - The postal code of the primary contact for the brand (required unless tollFree.businessVerificationId is sent, at most 10 characters)
- * @property {string} email - The email address of the primary contact for the brand (required, valid email, at most 100 characters)
- * @property {string} [firstName] - The first name of the primary contact for the brand (required unless tollFree.businessVerificationId is sent, at most 100 characters)
- * @property {string} [lastName] - The last name of the primary contact for the brand (required unless tollFree.businessVerificationId is sent, at most 100 characters)
+ * @property {string} companyName - The company name for the brand (required, at most 255 characters)
+ * @property {string} street - The street address of the primary contact for the brand (required, at most 255 characters)
+ * @property {string} city - The city of the primary contact for the brand (required, at most 100 characters)
+ * @property {string} state - The state of the primary contact for the brand (required, at most 20 characters; must be a valid 2-letter US state code when country is "US", and a 2-letter state or province code when the group's toll-free brands are reviewed on submit)
+ * @property {string} postalCode - The postal code of the primary contact for the brand (required, at most 10 characters)
+ * @property {string} email - The brand's support email address (required, valid email, at most 100 characters)
+ * @property {string} firstName - The first name of the primary contact for the brand (required, at most 100 characters)
+ * @property {string} lastName - The last name of the primary contact for the brand (required, at most 100 characters)
  * @property {string} website - The website URL for the brand (required, valid URL, at most 255 characters)
  * @property {TollFreeBrandDetails} tollFree - The Toll-Free brand details (required)
  * @property {string} [referenceId] - A unique reference for the brand (optional, at most 50 characters)
@@ -151,6 +123,12 @@
  * @property {string} [termsAndConditionsLink] - A URL linking to the terms and conditions for the brand (optional, valid URL, at most 255 characters)
  * @property {string} [landingId] - The ID of the landing page associated with the brand (optional)
  * @property {string} [country] - The country code of the primary contact for the brand (optional, 2-letter code; when "US", state must be a valid 2-letter US state code)
+ */
+
+/**
+ * @typedef {Object} TollFreeRequirements
+ * @property {string} groupId - The group the requirements are for
+ * @property {boolean} reviewsBusinessOnSubmit - Whether the group's new toll-free brands are reviewed when they're submitted. When true, a new toll-free brand needs tollFree.businessStructure, industry, contactEmail, contactJobTitle and contactJobLevel, a tollFree.countryCode of "US" or "CA" and a 2-letter state or province code; it stays DCA_PENDING until it's reviewed, and its business details can't be changed after it's submitted. When false, those five fields are refused
  */
 
 /**
@@ -180,8 +158,7 @@ export class Brands {
       this.admin = {
         /**
          * Get a group's toll-free ISV account: the group's own top-level account at the toll-free provider, used when its
-         * subgroups are separate businesses. Each subgroup gets an account and business verifications of its own under it.
-         * Staff only.
+         * subgroups are separate businesses. Each subgroup gets an account of its own under it. Staff only.
          * @async
          * @roles signalhouse_api, signalhouse_admin, signalhouse_user
          * @param {Object} params - The parameters for getting the toll-free ISV account
@@ -248,7 +225,7 @@ export class Brands {
    * @param {boolean} [params.excludeDeleted] - Staff-only: hide DELETED brands when no status is given
    * @param {boolean} [params.includeTotal] - Staff-only: with page and limit, return `{ data, total, page, limit, totalPages }` instead of the array
    * @param {RequestOptions} [params.options] - Additional options for the request
-   * @returns {Promise<SdkResponse<Array<{ _id: string, brandId: string|null, status: string, registrationType: string, tollFree?: { isBrandReady?: boolean, maxNumbersPerCampaign?: number, maxOptInMethods?: number, requiresPrivacyPolicy?: boolean, requiresTermsAndConditions?: boolean, maxAppealReasonLength?: number, labelsSamples?: boolean, supportsMms?: boolean, usesBusinessVerification?: boolean, businessVerificationId?: string|null, [key: string]: any }, [key: string]: any }>|{ data: Array<Object>, total: number, page: number, limit: number, totalPages: number }>>} Brand records. For 10DLC brands in PENDING_CREATION (or rejected before carrier assignment), brandId is null — poll by _id until status advances and brandId is assigned. Toll-free brands carry `tollFree.isBrandReady` (whether the brand can host campaigns), `tollFree.maxNumbersPerCampaign` (the most numbers one of its campaigns can hold), `tollFree.maxOptInMethods` (the most opt-in methods one of its campaigns can declare), `tollFree.requiresPrivacyPolicy` (whether its campaigns need a privacy policy URL), `tollFree.requiresTermsAndConditions` (whether its campaigns need a terms and conditions URL), `tollFree.maxAppealReasonLength` (the longest appeal reason its campaigns may give), `tollFree.labelsSamples` (whether its campaigns' sample messages each start with their use case's name), `tollFree.supportsMms` (whether its numbers can send MMS and group messages), `tollFree.usesBusinessVerification` (whether it waits on its own business verification) and `tollFree.businessVerificationId` (the ID of the business verification it uses, or null when it uses none). The staff-only list (no id/subgroupId/groupId) returns the `{ data, total, page, limit, totalPages }` envelope only when includeTotal is sent with page and limit. Each brand carries `carrierSuspensions` (carrier brand suspension rules; active while liftedAt is null).
+   * @returns {Promise<SdkResponse<Array<{ _id: string, brandId: string|null, status: string, registrationType: string, tollFree?: { isBrandReady?: boolean, maxNumbersPerCampaign?: number, maxOptInMethods?: number, requiresPrivacyPolicy?: boolean, requiresTermsAndConditions?: boolean, maxAppealReasonLength?: number, labelsSamples?: boolean, supportsMms?: boolean, reviewsBusinessOnSubmit?: boolean, businessStructure?: string|null, industry?: string|null, contactEmail?: string|null, contactJobTitle?: string|null, contactJobLevel?: string|null, rejectionReason?: string|null, [key: string]: any }, [key: string]: any }>|{ data: Array<Object>, total: number, page: number, limit: number, totalPages: number }>>} Brand records. For 10DLC brands in PENDING_CREATION (or rejected before carrier assignment), brandId is null — poll by _id until status advances and brandId is assigned. Toll-free brands carry `tollFree.isBrandReady` (whether the brand can host campaigns), `tollFree.maxNumbersPerCampaign` (the most numbers one of its campaigns can hold), `tollFree.maxOptInMethods` (the most opt-in methods one of its campaigns can declare), `tollFree.requiresPrivacyPolicy` (whether its campaigns need a privacy policy URL), `tollFree.requiresTermsAndConditions` (whether its campaigns need a terms and conditions URL), `tollFree.maxAppealReasonLength` (the longest appeal reason its campaigns may give), `tollFree.labelsSamples` (whether its campaigns' sample messages each start with their use case's name), `tollFree.supportsMms` (whether its numbers can send MMS and group messages) and `tollFree.reviewsBusinessOnSubmit` (whether it's reviewed when it's submitted and keeps its business details from then on). A brand reviewed on submit also carries its `tollFree.businessStructure`, `tollFree.industry`, `tollFree.contactEmail`, `tollFree.contactJobTitle` and `tollFree.contactJobLevel`, and `tollFree.rejectionReason` (why its review rejected it, in plain English, or null). On other toll-free brands these are null or absent. The staff-only list (no id/subgroupId/groupId) returns the `{ data, total, page, limit, totalPages }` envelope only when includeTotal is sent with page and limit. Each brand carries `carrierSuspensions` (carrier brand suspension rules; active while liftedAt is null).
    */
   async getBrands({
     id,
@@ -331,7 +308,10 @@ export class Brands {
   }
 
   /**
-   * Create a new Toll-Free (TFN) brand
+   * Create a new Toll-Free (TFN) brand. When the group's toll-free brands are reviewed on submit (see
+   * getTollFreeRequirements), the brand stays DCA_PENDING until it's reviewed, then becomes DCA_ACTIVE, or DCA_REJECTED
+   * with tollFree.rejectionReason saying why. Its business details can't be changed after it's submitted, so a rejected
+   * brand is fixed by creating it again with the corrections.
    * @async
    * @roles api, admin, developer, billing, user
    * @param {Object} params - The parameters for creating the toll-free brand
@@ -346,76 +326,20 @@ export class Brands {
   }
 
   /**
-   * List a group's business verifications, newest first, and whether its toll-free brands need one. Some groups verify
-   * each subgroup's business separately: a platform whose subgroups are separate businesses, set up by Signal House. For
-   * those groups pass the subgroup whose business verifications to list.
+   * Get whether a group's new toll-free brands are reviewed when they're submitted, which decides the details
+   * createTollFreeBrand needs.
    * @async
    * @roles api, admin, developer, billing, user
-   * @param {Object} params - The parameters for listing the business verifications
-   * @param {string} params.groupId - The ID of the group whose business verifications to list
-   * @param {string} [params.subgroupId] - The subgroup whose business verifications to list, sent as a query parameter only when given. Required for a group that verifies each subgroup's business separately; for any other group it must be one of the group's subgroups and is otherwise ignored
+   * @param {Object} params - The parameters for getting the toll-free requirements
+   * @param {string} params.groupId - The ID of the group whose toll-free requirements to get
    * @param {RequestOptions} [params.options] - Additional options for the request
    * @throws {Error} Throws an error if the groupId parameter is missing
-   * @returns {Promise<SdkResponse<{ groupId: string, subgroupId?: string, required: boolean, businessVerifications: Array<BusinessVerification> }>>} The business verifications, newest first. `subgroupId` is present only when they belong to one subgroup. `required` says whether the group's new toll-free brands need a business verification: each one names a VERIFIED business verification as `tollFree.businessVerificationId`. The API returns 400 when the group verifies each subgroup's business separately and no subgroupId is given, and 404 when the subgroup is not in the group.
+   * @returns {Promise<SdkResponse<TollFreeRequirements>>} The group's toll-free requirements (see TollFreeRequirements typedef for details). The API returns 403 when the caller can't view the group.
    */
-  async getBusinessVerifications({ groupId, subgroupId, options = {} }) {
+  async getTollFreeRequirements({ groupId, options = {} }) {
     this.client._require({ groupId });
-    const queryString = this.client._getQueryString({ subgroupId });
-    return this.client(`/brand/business-verification/${encodeURIComponent(groupId)}${queryString}`, { method: 'GET', ...options });
-  }
-
-  /**
-   * Get one of a group's business verifications by its ID.
-   * @async
-   * @roles api, admin, developer, billing, user
-   * @param {Object} params - The parameters for getting the business verification
-   * @param {string} params.groupId - The ID of the group the business verification belongs to
-   * @param {string} params.businessVerificationId - The ID of the business verification to get (starts with BV)
-   * @param {RequestOptions} [params.options] - Additional options for the request
-   * @throws {Error} Throws an error if the groupId or businessVerificationId parameter is missing
-   * @returns {Promise<SdkResponse<BusinessVerification & { required: boolean }>>} The business verification, plus `required` (whether the group's new toll-free brands need one). The API returns 404 when it isn't one of the group's.
-   */
-  async getBusinessVerification({ groupId, businessVerificationId, options = {} }) {
-    this.client._require({ groupId, businessVerificationId });
-    return this.client(`/brand/business-verification/${encodeURIComponent(groupId)}/${encodeURIComponent(businessVerificationId)}`, { method: 'GET', ...options });
-  }
-
-  /**
-   * Create and submit a new business verification for a group, or for one subgroup in a group that verifies each
-   * subgroup's business separately. Review usually takes 1–2 business days; once it is VERIFIED, new toll-free brands
-   * can use it by naming it as `tollFree.businessVerificationId`.
-   * @async
-   * @roles api, admin, developer, billing, user
-   * @param {Object} params - The parameters for creating the business verification
-   * @param {string} params.groupId - The ID of the group the business verification is for (must be the caller's active group)
-   * @param {string} [params.subgroupId] - The subgroup whose business it verifies, sent as a query parameter only when given. Required for a group that verifies each subgroup's business separately; for any other group it must be one of the group's subgroups and is otherwise ignored. The subgroup must be active
-   * @param {BusinessVerificationDetails} params.details - The business verification details (see BusinessVerificationDetails typedef for details)
-   * @param {RequestOptions} [params.options] - Additional options for the request
-   * @throws {Error} Throws an error if the groupId or details parameter is missing
-   * @returns {Promise<SdkResponse<BusinessVerification>>} A 202 with the new business verification, now SUBMITTING. The API returns 400 when the group's toll-free brands don't need a business verification, when the group verifies each subgroup's business separately and no subgroupId is given, or when the subgroup is inactive, and 404 when the subgroup is not in the group.
-   */
-  async createBusinessVerification({ groupId, subgroupId, details, options = {} }) {
-    this.client._require({ groupId, details });
-    const queryString = this.client._getQueryString({ subgroupId });
-    return this.client(`/brand/business-verification/${encodeURIComponent(groupId)}${queryString}`, { method: 'POST', body: details, ...options });
-  }
-
-  /**
-   * Correct and resubmit a business verification that needs changes. Allowed only while its status is NEEDS_CHANGES.
-   * Review usually takes 1–2 business days; the toll-free brands that use it stay pending until it is verified.
-   * @async
-   * @roles api, admin, developer, billing, user
-   * @param {Object} params - The parameters for updating the business verification
-   * @param {string} params.groupId - The ID of the group the business verification belongs to (must be the caller's active group)
-   * @param {string} params.businessVerificationId - The ID of the business verification to update (starts with BV)
-   * @param {BusinessVerificationDetails} params.details - The corrected business verification details (see BusinessVerificationDetails typedef for details)
-   * @param {RequestOptions} [params.options] - Additional options for the request
-   * @throws {Error} Throws an error if the groupId, businessVerificationId or details parameter is missing
-   * @returns {Promise<SdkResponse<BusinessVerification>>} A 202 with the business verification, now SUBMITTING. The API returns 400 when it doesn't need changes, and 404 when it isn't one of the group's.
-   */
-  async updateBusinessVerification({ groupId, businessVerificationId, details, options = {} }) {
-    this.client._require({ groupId, businessVerificationId, details });
-    return this.client(`/brand/business-verification/${encodeURIComponent(groupId)}/${encodeURIComponent(businessVerificationId)}`, { method: 'PUT', body: details, ...options });
+    const safeGroupId = encodeURIComponent(groupId);
+    return this.client(`/brand/toll-free-requirements/${safeGroupId}`, { method: 'GET', ...options });
   }
 
   /**

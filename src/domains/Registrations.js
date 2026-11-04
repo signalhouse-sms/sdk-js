@@ -171,6 +171,8 @@ export class Registrations {
 	 * @param {string|string[]} [params.status] - Filter by one registration status or a list
 	 * @param {string} [params.parentRegistrationId] - Filter by the parent registration ID
 	 * @param {string} [params.phoneNumber] - Filter to registrations holding this phone number
+	 * @param {string} [params.brandId] - RCS agents only: filter to agents linked to this 10DLC brand (carrier id, provisional UUID or _id)
+	 * @param {string} [params.campaignId] - RCS agents only: filter to agents linked to this 10DLC campaign (campaign id or _id)
 	 * @param {string} [params.sortBy] - Sort field: createdAt (default), subgroupId, registrationId, region or status
 	 * @param {string} [params.sortOrder] - Sort direction: asc or desc (default)
 	 * @param {number} [params.page] - Page number (default 1)
@@ -178,8 +180,8 @@ export class Registrations {
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { data: [registrations], totalCount, page, limit }
 	 */
-	async getRegistrations({ groupId, subgroupId, region, type, kind, status, parentRegistrationId, phoneNumber, sortBy, sortOrder, page, limit, options = {} } = {}) {
-		const queryString = this.client._getQueryString({ groupId, subgroupId, region, type, kind, status, parentRegistrationId, phoneNumber, sortBy, sortOrder, page, limit });
+	async getRegistrations({ groupId, subgroupId, region, type, kind, status, parentRegistrationId, phoneNumber, brandId, campaignId, sortBy, sortOrder, page, limit, options = {} } = {}) {
+		const queryString = this.client._getQueryString({ groupId, subgroupId, region, type, kind, status, parentRegistrationId, phoneNumber, brandId, campaignId, sortBy, sortOrder, page, limit });
 		return this.client(`/registration${queryString}`, { method: "GET", ...options });
 	}
 
@@ -199,8 +201,79 @@ export class Registrations {
 	}
 
 	/**
+	 * Edit a draft, or a registration Signal House rejected, before submitting it (types that keep drafts, such as
+	 * RCS_AGENT). `data` is a partial of the type's create fields: for RCS_AGENT `agent` and `consent` merge field by
+	 * field, every other key replaces, and `campaignId: null` unlinks the campaign. 409 once submitted.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The parameters for the edit
+	 * @param {string} params.registrationId - The registration ID (e.g. RCSA7K2M1QZ8RP)
+	 * @param {Object} params.data - The fields to change
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the updated registration
+	 */
+	async updateRegistration({ registrationId, data, options = {} }) {
+		this.client._require({ registrationId, data });
+		const safeId = encodeURIComponent(registrationId);
+		return this.client(`/registration/${safeId}`, { method: "PUT", body: data, ...options });
+	}
+
+	/**
+	 * Check a draft against every submit requirement and the live state of its links, without writing
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The parameters for the check
+	 * @param {string} params.registrationId - The registration ID (e.g. RCSA7K2M1QZ8RP)
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { valid, errors: [{ field, reason }], warnings: [{ field, reason }] }
+	 */
+	async validateRegistration({ registrationId, options = {} }) {
+		this.client._require({ registrationId });
+		const safeId = encodeURIComponent(registrationId);
+		return this.client(`/registration/${safeId}/validate`, { method: "POST", ...options });
+	}
+
+	/**
+	 * Submit a draft. A type Signal House reviews goes to SIGNAL_HOUSE_REVIEW; a type it does not (RCS_AGENT) goes to
+	 * SUBMITTING and is filed with the provider at once. A draft that fails a requirement gets a 400 whose details carry
+	 * { code: "REGISTRATION_INCOMPLETE", errors, warnings }; a second submit, or one of a registration the provider
+	 * already holds, gets a 409.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The parameters for the submission
+	 * @param {string} params.registrationId - The registration ID (e.g. RCSA7K2M1QZ8RP)
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the registration, now SIGNAL_HOUSE_REVIEW or SUBMITTING
+	 */
+	async submitRegistration({ registrationId, options = {} }) {
+		this.client._require({ registrationId });
+		const safeId = encodeURIComponent(registrationId);
+		return this.client(`/registration/${safeId}/submit`, { method: "POST", ...options });
+	}
+
+	/**
+	 * Request the launch of a registration the provider already holds (an RCS agent in testing): the launch requirements
+	 * are checked and the registration goes to SIGNAL_HOUSE_REVIEW, whose approval files the provider's launch request.
+	 * Allowed while the provider reports the agent ready for testing, after a Signal House rejection, or after every
+	 * carrier refused an earlier launch (409 otherwise); a failed requirement is a 400 whose details carry
+	 * { code: "REGISTRATION_INCOMPLETE", errors, warnings }.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The parameters for the launch request
+	 * @param {string} params.registrationId - The registration ID (e.g. RCSA7K2M1QZ8RP)
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the registration, now SIGNAL_HOUSE_REVIEW
+	 */
+	async launchRegistration({ registrationId, options = {} }) {
+		this.client._require({ registrationId });
+		const safeId = encodeURIComponent(registrationId);
+		return this.client(`/registration/${safeId}/launch`, { method: "POST", ...options });
+	}
+
+	/**
 	 * Cancel a registration. Allowed from SIGNAL_HOUSE_REVIEW, SIGNAL_HOUSE_APPROVED, PENDING_PROVIDER, NEEDS_INFORMATION,
-	 * PAYMENT_REQUIRED and APPROVED (409 otherwise). Numbers already allocated stay on the account and stop sending.
+	 * PAYMENT_REQUIRED and APPROVED (409 otherwise), and for types that keep drafts also from DRAFT and SIGNAL_HOUSE_REJECTED.
+	 * Numbers already allocated stay on the account and stop sending.
 	 * @async
 	 * @roles api, admin, developer, user
 	 * @param {Object} params - The parameters for cancelling the registration
