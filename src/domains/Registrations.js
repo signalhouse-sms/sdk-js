@@ -171,8 +171,8 @@ export class Registrations {
 	 * @param {string|string[]} [params.status] - Filter by one registration status or a list
 	 * @param {string} [params.parentRegistrationId] - Filter by the parent registration ID
 	 * @param {string} [params.phoneNumber] - Filter to registrations holding this phone number
-	 * @param {string} [params.brandId] - RCS agents only: filter to agents linked to this 10DLC brand (carrier id, provisional UUID or _id)
-	 * @param {string} [params.campaignId] - RCS agents only: filter to agents linked to this 10DLC campaign (campaign id or _id)
+	 * @param {string} [params.brandId] - RCS agents only: filter to agents linked to this brand (carrier id, provisional UUID or _id)
+	 * @param {string} [params.campaignId] - RCS agents only: filter to agents linked to this campaign (campaign id or _id)
 	 * @param {string} [params.sortBy] - Sort field: createdAt (default), subgroupId, registrationId, region or status
 	 * @param {string} [params.sortOrder] - Sort direction: asc or desc (default)
 	 * @param {number} [params.page] - Page number (default 1)
@@ -257,6 +257,7 @@ export class Registrations {
 	 * Allowed while the provider reports the agent ready for testing, after a Signal House rejection, or after every
 	 * carrier refused an earlier launch (409 otherwise); a failed requirement is a 400 whose details carry
 	 * { code: "REGISTRATION_INCOMPLETE", errors, warnings }.
+	 * An RCS agent's launch request charges its launch fees: a wallet that cannot cover them gets a 402, and nothing changes.
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The parameters for the launch request

@@ -103,6 +103,11 @@
  */
 
 /**
+ * @typedef {TemplateDetail & { validation: { valid: boolean, errors: ValidationIssue[], warnings: ValidationIssue[] }|null }} SavedTemplate
+ * What a save returns: the template, and what would stop it publishing. `validation` is null when the checks could not run.
+ */
+
+/**
  * @typedef {Object} MediaAsset
  * @property {string} mediaId - "MED" + 10 characters
  * @property {string} groupId - Owning group
@@ -128,7 +133,11 @@
  * @property {string[]} trafficTypes - Allowed traffic types
  * @property {string[]} cardWidths - Allowed carousel card widths
  * @property {string[]} mediaHeights - Allowed card media heights
- * @property {Object<string, number>} limits - Length and count limits (maxBlocks, maxTextLength, maxCarouselCards, ...)
+ * @property {Object<string, number>} limits - Length and count limits (maxBlocks, maxTextLength, maxCarouselCards, maxRecipients, ...)
+ * @property {Object<string, { seconds: number, min: number, max: number }>} ttlPresets - Per traffic type: the default time to live and its range, in seconds
+ * @property {Object<string, string[]>} trafficByUseCase - The traffic types each agent use case may send
+ * @property {Object<string, string>} defaultTrafficByUseCase - The traffic type a single-purpose agent sends when a request names none
+ * @property {{ cardButtonsInline: number, suggestedActionsInline: number, linesPerField: number, charsPerLine: number }} ios - How an iPhone lays out RCS content
  * @property {{ maxUploadBytes: number, mimeTypes: string[] }} media - Upload constraints
  * @property {{ available: boolean }} geocoding - Whether this server resolves VIEW_LOCATION addresses (geocodeAddress answers 503 when false)
  * @property {{ provider: "infobip"|"sinch", adapterVersion: string, limits: Object<string, number>, unsupported: Array<{ feature: string, code: string, message: string }> }|null} provider - Provider-specific limits when a provider was requested
@@ -222,7 +231,7 @@ export class Templates {
 	 * @param {string} [params.tag] - Tag (1-60 characters)
 	 * @param {RcsTemplateBody} params.body - The raw template body
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<TemplateDetail>>} A promise that resolves to the new template and its draft (201)
+	 * @returns {Promise<SdkResponse<SavedTemplate>>} A promise that resolves to { head, version, validation } (201). The draft saves even when validation lists errors
 	 */
 	async create({ groupId, name, tag, body, options = {} }) {
 		this.client._require({ groupId, name, body });
@@ -285,7 +294,7 @@ export class Templates {
 	 * @param {string|null} [params.tag] - New tag; null clears it, omitted leaves it unchanged
 	 * @param {RcsTemplateBody} [params.body] - Full replacement body
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<TemplateDetail>>} A promise that resolves to { head, version }
+	 * @returns {Promise<SdkResponse<SavedTemplate>>} A promise that resolves to { head, version, validation }. The draft saves even when validation lists errors
 	 */
 	async update({ templateId, groupId, name, tag, body, options = {} }) {
 		this.client._require({ templateId, groupId });
@@ -305,7 +314,7 @@ export class Templates {
 	 * @param {string} params.templateId - The template ID
 	 * @param {string} params.groupId - The owning group
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<TemplateDetail>>} A promise that resolves to { head, version } for the published version
+	 * @returns {Promise<SdkResponse<TemplateDetail & { warnings: ValidationIssue[] }>>} A promise that resolves to { head, version, warnings } for the published version
 	 */
 	async publish({ templateId, groupId, options = {} }) {
 		this.client._require({ templateId, groupId });

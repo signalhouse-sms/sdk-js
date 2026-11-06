@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Rcs, RcsAgents } from "../src/domains/Rcs.js";
+import { Messages } from "../src/domains/Messages.js";
+import { Rcs, RcsAgents, RcsMessages } from "../src/domains/Rcs.js";
 import { Registrations } from "../src/domains/Registrations.js";
 import { SignalHouseSDK } from "../src/SignalHouseSDK.js";
 
@@ -27,6 +28,7 @@ test("the SDK exposes rcs.agents with the multipart client wired in", () => {
 	assert.ok(sdk.rcs instanceof Rcs);
 	assert.ok(sdk.rcs.agents instanceof RcsAgents);
 	assert.equal(typeof sdk.rcs.agents.multipartClient, "function");
+	assert.ok(sdk.rcs.messages instanceof RcsMessages);
 });
 
 test("create posts the agent body with the brand link and requires brandId", async () => {
@@ -97,4 +99,76 @@ test("registrations gain draft update, validate and submit, and the RCS link fil
 	assert.deepEqual(params(calls[4].path), { type: "RCS_AGENT", brandId: "BXYZ123", campaignId: "CABC123" });
 	await assert.rejects(registrations.launchRegistration({}), /registrationId/);
 	await assert.rejects(registrations.updateRegistration({ registrationId: AGENT }), /data/);
+});
+
+test("send posts every field but options and needs agentId and recipients", async () => {
+	const { client, calls } = captureClients();
+	const messages = new RcsMessages(client);
+	const recipients = [{ phoneNumber: "+15125550199", variables: { name: "Ada" }, clientMessageId: "c1", metadata: { order: "7" } }];
+	const fallback = { mode: "auto", channel: "sms", from: "15125550100", content: { text: "Hi" }, validitySeconds: 600 };
+	const fields = { agentId: AGENT, recipients, content: { blocks: [] }, contentFormat: "content.v1", trafficType: "TRANSACTION", ttlSeconds: 900, fallback, statusCallbackUrl: "https://example.com/cb", enableShortlink: false, isTest: true, simulate: "delivered" };
+	await messages.send({ ...fields, options: { idempotencyKey: "k1" } });
+	assert.deepEqual([calls[0].request.method, calls[0].path, calls[0].request.idempotencyKey], ["POST", "/message/rcs", "k1"]);
+	assert.deepEqual(wire(calls[0].request.body), fields);
+	await messages.send({ agentId: AGENT, recipients, templateId: "T1", templateVersion: 2, expireTime: "2026-11-05T00:00:00Z" });
+	assert.deepEqual(wire(calls[1].request.body), { agentId: AGENT, recipients, templateId: "T1", templateVersion: 2, expireTime: "2026-11-05T00:00:00Z" });
+	await assert.rejects(messages.send({ recipients }), /agentId/);
+	await assert.rejects(messages.send({ agentId: AGENT }), /recipients/);
+});
+
+test("validate posts the send body to the validate route", async () => {
+	const { client, calls } = captureClients();
+	const messages = new RcsMessages(client);
+	const recipients = [{ phoneNumber: "+15125550199" }];
+	await messages.validate({ agentId: AGENT, recipients, templateId: "T1", simulate: "read" });
+	assert.deepEqual([calls[0].request.method, calls[0].path], ["POST", "/message/rcs/validate"]);
+	assert.deepEqual(wire(calls[0].request.body), { agentId: AGENT, recipients, templateId: "T1", simulate: "read" });
+	await assert.rejects(messages.validate({ agentId: AGENT }), /recipients/);
+});
+
+test("estimate adds the rcs channel and needs only agentId", async () => {
+	const { client, calls } = captureClients();
+	const messages = new RcsMessages(client);
+	await messages.estimate({ agentId: AGENT, recipientCount: 500, templateId: "T1", templateVersion: 2, trafficType: "PROMOTION", fallback: { mode: "rcs_only" } });
+	assert.deepEqual([calls[0].request.method, calls[0].path], ["POST", "/message/estimate"]);
+	assert.deepEqual(wire(calls[0].request.body), { channel: "rcs", agentId: AGENT, recipientCount: 500, templateId: "T1", templateVersion: 2, trafficType: "PROMOTION", fallback: { mode: "rcs_only" } });
+	await assert.rejects(messages.estimate({ recipientCount: 500 }), /agentId/);
+});
+
+test("capabilities posts the numbers and needs both fields", async () => {
+	const { client, calls } = captureClients();
+	const messages = new RcsMessages(client);
+	await messages.capabilities({ agentId: AGENT, phoneNumbers: ["+15125550199"] });
+	assert.deepEqual([calls[0].request.method, calls[0].path], ["POST", "/rcs/capabilities"]);
+	assert.deepEqual(wire(calls[0].request.body), { agentId: AGENT, phoneNumbers: ["+15125550199"] });
+	await assert.rejects(messages.capabilities({ agentId: AGENT }), /phoneNumbers/);
+	await assert.rejects(messages.capabilities({ phoneNumbers: ["+15125550199"] }), /agentId/);
+});
+
+test("get and getMessage address the message", async () => {
+	const { client, multipartClient, calls } = captureClients();
+	await new RcsMessages(client).get({ messageId: "a/1" });
+	await new Messages(client, multipartClient, false).getMessage({ id: "a/1" });
+	assert.deepEqual(calls.map(({ path, request }) => [request.method, path]), [["GET", "/message/a%2F1"], ["GET", "/message/a%2F1"]]);
+	await assert.rejects(new RcsMessages(client).get({}), /messageId/);
+	await assert.rejects(new Messages(client, multipartClient, false).getMessage({}), /id/);
+});
+
+test("list maps agentId, from and to, adds messageType RCS, and needs the group and the date range", async () => {
+	const { client, calls } = captureClients();
+	const messages = new RcsMessages(client);
+	await messages.list({ agentId: AGENT, from: "2026-11-01", to: "2026-11-02", groupId: "G1", status: "READ", page: 2, limit: 50, templateId: "T1", templateVersion: 3, bulkId: "B1", fallbackReason: "NOT_CAPABLE", billingClass: "RICH_MEDIA", deliveredChannel: "sms", isTest: false });
+	assert.equal(calls[0].request.method, "GET");
+	assert.equal(pathname(calls[0].path), "/message");
+	assert.deepEqual(params(calls[0].path), { registrationId: AGENT, startDate: "2026-11-01", endDate: "2026-11-02", groupId: "G1", status: "READ", page: "2", limit: "50", templateId: "T1", templateVersion: "3", bulkId: "B1", fallbackReason: "NOT_CAPABLE", billingClass: "RICH_MEDIA", deliveredChannel: "sms", isTest: "false", messageType: "RCS" });
+	await assert.rejects(messages.list({ agentId: AGENT }), /groupId/);
+	await assert.rejects(messages.list({ groupId: "G1", from: "2026-11-01" }), /to/);
+	assert.equal(calls.length, 1);
+});
+
+test("getMessages forwards the RCS filters", async () => {
+	const { client, multipartClient, calls } = captureClients();
+	await new Messages(client, multipartClient, false).getMessages({ groupId: "G1", startDate: "2026-11-01", endDate: "2026-11-02", templateId: "T1", templateVersion: 3, bulkId: "B1", fallbackReason: "TTL_EXPIRED", billingClass: "RICH", deliveredChannel: "sms", isTest: false });
+	assert.equal(pathname(calls[0].path), "/message");
+	assert.deepEqual(params(calls[0].path), { groupId: "G1", startDate: "2026-11-01", endDate: "2026-11-02", templateId: "T1", templateVersion: "3", bulkId: "B1", fallbackReason: "TTL_EXPIRED", billingClass: "RICH", deliveredChannel: "sms", isTest: "false" });
 });

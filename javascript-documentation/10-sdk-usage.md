@@ -93,7 +93,8 @@ The SDK organizes API endpoints into domain namespaces:
 | `signalHouse.subgroups` | Subgroup CRUD operations |
 | `signalHouse.subscriptions` | Subscription plan management |
 | `signalHouse.templates` | Channel-generic message templates: drafts, versions, publish, validation, media |
-| `signalHouse.rcs.agents` | RCS agents linked to a 10DLC brand and campaign: drafts, validate, submit, images |
+| `signalHouse.rcs.agents` | RCS agents linked to a brand and campaign: drafts, validate, submit, images |
+| `signalHouse.rcs.messages` | RCS messages: send, validate, estimate, capability check, read |
 | `signalHouse.users` | User management, service users |
 | `signalHouse.webhooks` | Webhook registration and management |
 
@@ -393,7 +394,8 @@ await signalHouse.landings.updateLanding({
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `getMessages` | `{ id, campaignId, brandId, subgroupId, groupId, status, direction, messageType, carrier, sentimentLabel, startDate, endDate, sortField, sortOrder, page, limit }` | List messages with filters |
+| `getMessages` | `{ id, campaignId, brandId, subgroupId, groupId, status, direction, messageType, carrier, sentimentLabel, startDate, endDate, sortField, sortOrder, page, limit, templateId, templateVersion, bulkId, fallbackReason, billingClass, deliveredChannel, isTest }` | List messages with filters; the last seven filter RCS messages |
+| `getMessage` | `{ id }` | Get one message of any type |
 | `getAnalytics` | `{ groupId, subgroupId, brandId, campaignId, phoneNumber, carrier, startDate, endDate }` | Get aggregated message analytics |
 | `sendSMS` | `{ senderPhoneNumber, recipientPhoneNumbers, messageBody, statusCallbackUrl, enableShortlink }` | Send an SMS message |
 | `sendMMS` | `{ senderPhoneNumber, recipientPhoneNumbers, messageBody, mediaUrls, statusCallbackUrl, enableShortlink, enableCompression, images }` | Send an MMS message with media |
@@ -461,7 +463,7 @@ Channel-generic templates under `/template` (today the only channel is `"rcs"`).
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `create` | `{ groupId, name, tag, body }` | Create a template with draft version 1; returns `{ head, version }` |
+| `create` | `{ groupId, name, tag, body }` | Create a template with draft version 1 (the response adds `validation`: `{ valid, errors, warnings }`, null when the checks could not run; a draft saves even when it lists errors); returns `{ head, version }` |
 | `list` | `{ groupId, state, channel, tag, search, sortBy, sortOrder, page, limit }` | List templates; returns `{ data, total, page, limit }` |
 | `get` | `{ templateId, groupId, version }` | Get a template head with one version |
 | `update` | `{ templateId, groupId, name, tag, body }` | Rename, retag or replace the draft body; `tag: null` clears it, omitted leaves it unchanged |
@@ -505,7 +507,7 @@ await signalHouse.templates.publish({
 
 ### RCS agents
 
-`signalHouse.rcs.agents` manages RCS agents under `/rcs/agent`. An agent links one 10DLC brand and one 10DLC campaign. The campaign's numbers are its SMS fallback, and the brand and campaign supply the company identity and consent text for the carrier launch. One brand or campaign can serve many agents. An agent is a registration (`RCS_AGENT`, `agentId` = `registrationId`, `RCSA` + 10 characters). Returns 404 while RCS is disabled for the environment and 400 while the group's `rcsEnabled` flag is off. To use a new brand and campaign, create the brand, wait until it is `VERIFIED`, create the campaign, then link them.
+`signalHouse.rcs.agents` manages RCS agents under `/rcs/agent`. An agent links one brand and one campaign, of any registration type. The campaign's numbers are its SMS fallback, and the brand and campaign supply the company identity and consent text for the carrier launch. One brand or campaign can serve many agents. An agent is a registration (`RCS_AGENT`, `agentId` = `registrationId`, `RCSA` + 10 characters). Returns 404 while RCS is disabled for the environment and 400 while the group's `rcsEnabled` flag is off. To use a new brand and campaign, create the brand, wait until it is `VERIFIED`, create the campaign, then link them.
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
@@ -531,6 +533,39 @@ const { agentId } = created.data;
 
 const check = await signalHouse.rcs.agents.validate({ agentId });
 if (check.data.valid) await signalHouse.rcs.agents.submit({ agentId });
+```
+
+---
+
+### RCS messages
+
+`signalHouse.rcs.messages` sends and reads RCS messages through an agent. A send needs exactly one of `templateId` or `content`. Returns 404 while RCS is disabled for the environment, 403 while the group's `rcsEnabled` flag is off, and 409 while the agent cannot send yet.
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `send` | `{ agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate }` | `POST /message/rcs`; send to up to 100 recipients; returns `{ requested, enqueued, failed, bulkId, messages }` |
+| `validate` | The `send` parameters | `POST /message/rcs/validate`; returns `{ valid, errors, warnings, billingClass, segments, estimatedCostMicros, unsupportedFiles, recipients }`. It runs a send's checks and holds no funds. `valid` is true only with no errors; a blocked recipient adds an error and carries `blockReason`, `reason` and `issues`, as a blocked `send` row does; writes nothing |
+| `estimate` | `{ agentId, recipients, recipientCount, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback }` | `POST /message/estimate` with `channel: "rcs"` added; price a draft in microdollars; exactly one of `recipients` or `recipientCount` |
+| `capabilities` | `{ agentId, phoneNumbers }` | `POST /rcs/capabilities`; `ENABLED`, `UNREACHABLE` or `UNKNOWN` per number |
+| `get` | `{ messageId }` | `GET /message/:messageId`; the same route as `messages.getMessage` |
+| `list` | `{ groupId, from, to, agentId, status, page, limit, templateId, templateVersion, bulkId, fallbackReason, billingClass, deliveredChannel, isTest }` | `GET /message` with `messageType=RCS`; `groupId`, `from` and `to` are required; `agentId` is sent as `registrationId`, `from` as `startDate` and `to` as `endDate` |
+
+`recipients` is an array of `{ phoneNumber, variables, clientMessageId, metadata }`. `fallback` is `{ mode, channel, from, content: { text, mediaUrls }, validitySeconds }`, where `mode` is `auto`, `rcs_only` or `sms_only` and `channel` is `auto`, `sms` or `mms`. Without `content`, the template's fallback, else a generated one, is used. `simulate` is `not_capable`, `ttl_expired`, `delivered` or `read`, for approved testers only.
+
+```javascript
+const sent = await signalHouse.rcs.messages.send({
+  agentId: "RCSA7K2M1QZ8RP",
+  recipients: [{ phoneNumber: "+15125550199", variables: { name: "Ada" } }],
+  templateId: "T1A2B3C",
+  fallback: { mode: "auto", from: "15125550100" },
+  options: { idempotencyKey: crypto.randomUUID() },
+});
+
+const logs = await signalHouse.rcs.messages.list({ groupId: "G1234567", from: "2026-11-01", to: "2026-11-02", agentId: "RCSA7K2M1QZ8RP", bulkId: sent.data.bulkId });
+
+// The fallback leg of an RCS message is an SMS or MMS message.
+const parent = await signalHouse.rcs.messages.get({ messageId: sent.data.messages[0].messageId });
+const leg = await signalHouse.messages.getMessage({ id: parent.data.fallbackMessageId });
 ```
 
 ---

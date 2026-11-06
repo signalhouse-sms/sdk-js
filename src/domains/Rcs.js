@@ -48,6 +48,25 @@
  */
 
 /**
+ * One recipient of an RCS send.
+ * @typedef {Object} RcsRecipient
+ * @property {string} phoneNumber - The number, 10-15 digits, with or without the +
+ * @property {Object<string, string>} [variables] - Template variable values for this recipient
+ * @property {string} [clientMessageId] - Your reference for this message (max 128)
+ * @property {Object<string, string>} [metadata] - Your key-value data (up to 20 keys, values up to 500 characters)
+ */
+
+/**
+ * What an RCS send does when RCS cannot reach a recipient.
+ * @typedef {Object} RcsMessageFallback
+ * @property {("auto"|"rcs_only"|"sms_only")} [mode] - The fallback mode
+ * @property {("auto"|"sms"|"mms")} [channel] - The fallback channel
+ * @property {string} [from] - The sender: a Ready number on the agent's linked Active campaign
+ * @property {{ text: string, mediaUrls?: string[] }} [content] - The fallback text; omitted, the template's fallback, else a generated one, is used
+ * @property {number} [validitySeconds] - How long the fallback message stays valid, in seconds
+ */
+
+/**
  * Build the multipart form for an agent image upload.
  * @param {Object} params - Form fields
  * @param {("logo"|"hero")} params.kind - Which image
@@ -64,7 +83,7 @@ export function agentAssetForm({ kind, file, fileName }) {
 }
 
 /**
- * RCS agents under /rcs/agent. An agent links one 10DLC brand and one 10DLC campaign: the campaign's numbers are the
+ * RCS agents under /rcs/agent. An agent links one brand and one campaign, of any registration type: the campaign's numbers are the
  * SMS fallback, and the brand and campaign supply the company identity and consent text for the carrier launch.
  * One brand or campaign can serve many agents. An agent is a registration (type RCS_AGENT, id RCSA…), so the
  * registrations methods read and edit the same record. 404 while the environment's RCS switch is off; 400 while the
@@ -77,13 +96,13 @@ export class RcsAgents {
 	}
 
 	/**
-	 * Create an agent draft on a 10DLC brand, optionally with its campaign. The agent's subgroup is the brand's.
+	 * Create an agent draft on a brand, optionally with its campaign. The agent's subgroup is the brand's.
 	 * Blank consent fields fill from the linked campaign. Pass options.idempotencyKey to make a retry safe.
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The agent
-	 * @param {string} params.brandId - The 10DLC brand: carrier brand ID, provisional UUID or _id
-	 * @param {string|null} [params.campaignId] - A 10DLC campaign of that brand: campaign ID or _id; required before submit
+	 * @param {string} params.brandId - The brand: carrier brand ID, provisional UUID or _id
+	 * @param {string|null} [params.campaignId] - A campaign of that brand: campaign ID or _id; required before submit
 	 * @param {RcsAgentProfile} [params.agent] - The agent profile
 	 * @param {RcsAgentConsent} [params.consent] - The launch text; required in full before the launch request
 	 * @param {RcsAgentContact} [params.contact] - The launch contact; required in full before the launch request
@@ -112,8 +131,8 @@ export class RcsAgents {
 	 * @param {string} [params.groupId] - Filter by group ID
 	 * @param {string} [params.subgroupId] - Filter by subgroup ID
 	 * @param {string|string[]} [params.status] - DRAFT, PENDING_REVIEW, REJECTED, AGENT_CREATING or ARCHIVED, one or a list
-	 * @param {string} [params.brandId] - Agents linked to this 10DLC brand (carrier brand ID, provisional UUID or _id)
-	 * @param {string} [params.campaignId] - Agents linked to this 10DLC campaign (campaign ID or _id)
+	 * @param {string} [params.brandId] - Agents linked to this brand (carrier brand ID, provisional UUID or _id)
+	 * @param {string} [params.campaignId] - Agents linked to this campaign (campaign ID or _id)
 	 * @param {number} [params.page] - Page number (default 1)
 	 * @param {number} [params.limit] - Agents per page (default 25, max 100)
 	 * @param {RequestOptions} [params.options] - Additional options for the request
@@ -147,7 +166,7 @@ export class RcsAgents {
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The edit
 	 * @param {string} params.agentId - The agent ID
-	 * @param {string} [params.brandId] - Relink to another 10DLC brand of the same subgroup
+	 * @param {string} [params.brandId] - Relink to another brand of the same subgroup
 	 * @param {string|null} [params.campaignId] - Link, relink or (null) unlink the campaign
 	 * @param {RcsAgentProfile} [params.agent] - Profile fields to change
 	 * @param {RcsAgentConsent} [params.consent] - Consent fields to change
@@ -206,6 +225,7 @@ export class RcsAgents {
 	 * PENDING_REVIEW), whose approval files the launch with the carrier partner. Allowed from IN_TESTING, REJECTED and
 	 * CARRIER_REJECTED (409 otherwise); a failed requirement is a 400 whose details carry { code:
 	 * "REGISTRATION_INCOMPLETE", errors, warnings }. Sends POST /registration/:agentId/launch: the agent is a registration.
+	 * The request charges the agent's launch fees: a wallet that cannot cover them gets a 402, and the agent stays where it is. The agent's launchFees quotes what the next request charges.
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The launch request
@@ -272,10 +292,175 @@ export class RcsAgents {
 }
 
 /**
+ * RCS messages. Sends go through an agent to POST /message/rcs. A message is a Message record (messageType RCS), so the
+ * messages methods read the same record. 404 while the environment's RCS switch is off; 403 while the group's rcsEnabled
+ * flag is off; 409 while the agent cannot send yet.
+ */
+export class RcsMessages {
+	/**
+	 * Keep the JSON client every RCS message request goes through.
+	 * @param {any} client - The JSON request client
+	 */
+	constructor(client) {
+		this.client = client;
+	}
+
+	/**
+	 * Send an RCS message to up to 100 recipients. A check that blocks one recipient writes a BLOCKED message for it and the
+	 * rest still send. Pass options.idempotencyKey to make a retry safe.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The send
+	 * @param {string} params.agentId - The agent that sends (RCSA…)
+	 * @param {RcsRecipient[]} params.recipients - Up to 100 recipients
+	 * @param {string} [params.templateId] - A template to send; exactly one of templateId or content
+	 * @param {number} [params.templateVersion] - A published version of templateId; needs templateId
+	 * @param {Object} [params.content] - Inline content; exactly one of templateId or content
+	 * @param {string} [params.contentFormat] - content.v1 (default) or google.rcs
+	 * @param {("AUTHENTICATION"|"TRANSACTION"|"SERVICEREQUEST"|"ACKNOWLEDGEMENT"|"PROMOTION")} [params.trafficType] - Required on a MULTI_USE agent when the template sets none
+	 * @param {number} [params.ttlSeconds] - Seconds the RCS message may wait for delivery; at most one of ttlSeconds or expireTime
+	 * @param {string} [params.expireTime] - ISO-8601 time the RCS message expires
+	 * @param {RcsMessageFallback} [params.fallback] - The fallback for this send
+	 * @param {string} [params.statusCallbackUrl] - URL that receives this message's status events
+	 * @param {boolean} [params.enableShortlink] - Shorten the links in the message
+	 * @param {boolean} [params.isTest] - Send as a test; approved testers only
+	 * @param {("not_capable"|"ttl_expired"|"delivered"|"read")} [params.simulate] - Simulate this outcome; approved testers only
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { requested, enqueued, failed, bulkId, messages } (201). A blocked row carries blockReason, reason and issues; an archived template answers 409 TEMPLATE_ARCHIVED
+	 */
+	async send({ agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate, options = {} }) {
+		this.client._require({ agentId, recipients });
+		return this.client("/message/rcs", {
+			method: "POST",
+			body: { agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate },
+			...options,
+		});
+	}
+
+	/**
+	 * Check a send without writing anything. Takes the same parameters as send.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The send to check
+	 * @param {string} params.agentId - The agent that sends (RCSA…)
+	 * @param {RcsRecipient[]} params.recipients - Up to 100 recipients
+	 * @param {string} [params.templateId] - A template to send; exactly one of templateId or content
+	 * @param {number} [params.templateVersion] - A published version of templateId; needs templateId
+	 * @param {Object} [params.content] - Inline content; exactly one of templateId or content
+	 * @param {string} [params.contentFormat] - content.v1 (default) or google.rcs
+	 * @param {("AUTHENTICATION"|"TRANSACTION"|"SERVICEREQUEST"|"ACKNOWLEDGEMENT"|"PROMOTION")} [params.trafficType] - Required on a MULTI_USE agent when the template sets none
+	 * @param {number} [params.ttlSeconds] - Seconds the RCS message may wait for delivery; at most one of ttlSeconds or expireTime
+	 * @param {string} [params.expireTime] - ISO-8601 time the RCS message expires
+	 * @param {RcsMessageFallback} [params.fallback] - The fallback for this send
+	 * @param {string} [params.statusCallbackUrl] - URL that receives this message's status events
+	 * @param {boolean} [params.enableShortlink] - Shorten the links in the message
+	 * @param {boolean} [params.isTest] - Send as a test; approved testers only
+	 * @param {("not_capable"|"ttl_expired"|"delivered"|"read")} [params.simulate] - Simulate this outcome; approved testers only
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { valid, errors, warnings, billingClass, segments, estimatedCostMicros, unsupportedFiles, recipients }. valid is true only with no errors; each blocked recipient adds an error and carries blockReason, reason and issues
+	 */
+	async validate({ agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate, options = {} }) {
+		this.client._require({ agentId, recipients });
+		return this.client("/message/rcs/validate", {
+			method: "POST",
+			body: { agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate },
+			...options,
+		});
+	}
+
+	/**
+	 * Price an RCS draft; no charge or send. Sends POST /message/estimate with channel "rcs". Amounts are microdollars.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The draft
+	 * @param {string} params.agentId - The agent that would send (RCSA…)
+	 * @param {RcsRecipient[]} [params.recipients] - Named recipients; exactly one of recipients or recipientCount
+	 * @param {number} [params.recipientCount] - A recipient count; carriers are unknown, so the default fees apply
+	 * @param {string} [params.templateId] - A template to price; exactly one of templateId or content
+	 * @param {number} [params.templateVersion] - A published version of templateId; needs templateId
+	 * @param {Object} [params.content] - Inline content; exactly one of templateId or content
+	 * @param {string} [params.contentFormat] - content.v1 (default) or google.rcs
+	 * @param {("AUTHENTICATION"|"TRANSACTION"|"SERVICEREQUEST"|"ACKNOWLEDGEMENT"|"PROMOTION")} [params.trafficType] - Required on a MULTI_USE agent when the template sets none
+	 * @param {number} [params.ttlSeconds] - Seconds the RCS message may wait for delivery; at most one of ttlSeconds or expireTime
+	 * @param {string} [params.expireTime] - ISO-8601 time the RCS message expires
+	 * @param {RcsMessageFallback} [params.fallback] - The fallback to price; its from is optional here, and with none the leg is priced on the channel of the agent's linked campaign
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { billingClass, segments, recipientCount, rcsLeg, fallbackLeg, totals, balance, issues, warnings }; rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB, already inside rcsLeg.cost; a message over 100 MB adds a MEDIA_TOO_LARGE issue.
+	 */
+	async estimate({ agentId, recipients, recipientCount, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, options = {} }) {
+		this.client._require({ agentId });
+		return this.client("/message/estimate", {
+			method: "POST",
+			body: { channel: "rcs", agentId, recipients, recipientCount, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback },
+			...options,
+		});
+	}
+
+	/**
+	 * Report which numbers can receive RCS from an agent
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The lookup
+	 * @param {string} params.agentId - The agent (RCSA…)
+	 * @param {string[]} params.phoneNumbers - Up to 500 numbers, 10-15 digits, with or without the +
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { results: [{ phoneNumber, capability }] }, capability being ENABLED, UNREACHABLE or UNKNOWN
+	 */
+	async capabilities({ agentId, phoneNumbers, options = {} }) {
+		this.client._require({ agentId, phoneNumbers });
+		return this.client("/rcs/capabilities", { method: "POST", body: { agentId, phoneNumbers }, ...options });
+	}
+
+	/**
+	 * Get one message by its ID. The same route as messages.getMessage.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The lookup
+	 * @param {string} params.messageId - The message ID
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the message; an unknown ID is a 404
+	 */
+	async get({ messageId, options = {} }) {
+		this.client._require({ messageId });
+		return this.client(`/message/${encodeURIComponent(messageId)}`, { method: "GET", ...options });
+	}
+
+	/**
+	 * List RCS messages. Sends GET /message with messageType RCS. A fallback leg is an SMS or MMS message: read it with
+	 * messages.getMessage and the parent's fallbackMessageId.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The group, the date range and the filters
+	 * @param {string} params.groupId - The group whose messages to list
+	 * @param {string} params.from - ISO-8601 date or timestamp; sent as startDate
+	 * @param {string} params.to - ISO-8601 date or timestamp; sent as endDate
+	 * @param {string} [params.agentId] - Messages this agent sent; sent as registrationId
+	 * @param {string} [params.status] - Filter by status (ENQUEUED, DEQUEUED, SENT, FAILED, DELIVERED, READ, EXPIRED, FALLBACK, BLOCKED)
+	 * @param {number} [params.page] - Page number
+	 * @param {number} [params.limit] - Messages per page
+	 * @param {string} [params.templateId] - Messages sent from this template
+	 * @param {number} [params.templateVersion] - Messages sent from this template version
+	 * @param {string} [params.bulkId] - Messages of one send
+	 * @param {string} [params.fallbackReason] - Why the fallback ran (NOT_CAPABLE, CARRIER_NOT_LAUNCHED, TTL_EXPIRED, RCS_ERROR, PROVIDER_ERROR, SMS_ONLY)
+	 * @param {string} [params.billingClass] - Filter by billing class (RICH, RICH_MEDIA)
+	 * @param {string} [params.deliveredChannel] - Filter by the channel that delivered the message (rcs, sms, mms)
+	 * @param {boolean} [params.isTest] - true for test messages only, false to leave them out
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the list of messages
+	 */
+	async list({ groupId, from, to, agentId, status, page, limit, templateId, templateVersion, bulkId, fallbackReason, billingClass, deliveredChannel, isTest, options = {} }) {
+		this.client._require({ groupId, from, to });
+		const queryString = this.client._getQueryString({ registrationId: agentId, startDate: from, endDate: to, groupId, status, page, limit, templateId, templateVersion, bulkId, fallbackReason, billingClass, deliveredChannel, isTest, messageType: "RCS" });
+		return this.client(`/message${queryString}`, { method: "GET", ...options });
+	}
+}
+
+/**
  * RCS (Google RBM) resources. Templates for RCS live under `templates`.
  */
 export class Rcs {
 	constructor(client, multipartClient) {
 		this.agents = new RcsAgents(client, multipartClient);
+		this.messages = new RcsMessages(client);
 	}
 }

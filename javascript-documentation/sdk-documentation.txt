@@ -437,8 +437,13 @@ MESSAGES  (signalHouse.messages)
 --------------------------------------------------------------------------------
   getMessages({ id, campaignId, brandId, subgroupId, groupId, status,
                 direction, messageType, carrier, sentimentLabel, errorCode,
-                startDate, endDate, sortField, sortOrder, page, limit })
-    List messages with extensive filters.
+                startDate, endDate, sortField, sortOrder, page, limit,
+                templateId, templateVersion, bulkId, fallbackReason,
+                billingClass, deliveredChannel, isTest })
+    List messages with extensive filters. The last seven filter RCS messages.
+
+  getMessage({ id })
+    GET /message/:id. Get one message of any type. An unknown ID is a 404. Required: id
 
   getAnalytics({ groupId, subgroupId, brandId, campaignId, registrationId,
                  phoneNumber, carrier, startDate, endDate })
@@ -489,7 +494,10 @@ TEMPLATES  (signalHouse.templates)
   means the published version, else the draft.
 
   create({ groupId, name, tag, body })
-    Create a template with draft version 1 (201). Returns { head, version }.
+    Create a template with draft version 1 (201). Returns { head, version, validation }. validation is
+    { valid, errors, warnings }, null when the checks could not run; update returns it too, and publish returns
+    { head, version, warnings }. A draft saves even when validation lists errors. On an RCS send, a blocked row
+    carries blockReason, reason and issues.
     Required: groupId, name, body
 
   list({ groupId, state, channel, tag, search, sortBy,
@@ -522,7 +530,8 @@ TEMPLATES  (signalHouse.templates)
 
   capabilities({ groupId, channel, provider })
     Allowed blocks, actions, variable types, limits, accepted contentFormats,
-    whether geocoding is available, and upload constraints.
+    whether geocoding is available, upload constraints, time to live ranges
+    (ttlPresets), traffic types per use case and iPhone layout numbers (ios).
     provider (infobip | sinch) adds that provider's limits and unsupported features.
 
   geocodeAddress({ groupId, address })
@@ -543,8 +552,8 @@ TEMPLATES  (signalHouse.templates)
 
 RCS AGENTS  (signalHouse.rcs.agents)
 --------------------------------------------------------------------------------
-  RCS agents under /rcs/agent. An agent links one 10DLC brand and one 10DLC
-  campaign: the campaign's numbers are its SMS fallback, and the brand and
+  RCS agents under /rcs/agent. An agent links one brand and one campaign, of
+  any registration type: the campaign's numbers are its SMS fallback, and the brand and
   campaign supply the company identity and consent text for the carrier
   launch. One brand or campaign can serve many agents. An agent is a
   registration (type RCS_AGENT, agentId = registrationId "RCSA" + 10
@@ -608,6 +617,9 @@ RCS AGENTS  (signalHouse.rcs.agents)
     Signal House's approval files the launch with the carrier partner. Allowed
     from IN_TESTING, REJECTED and CARRIER_REJECTED (409 otherwise); a failed
     requirement is 400 REGISTRATION_INCOMPLETE.
+    The request charges the agent's launch fees: a wallet that cannot cover
+    them gets a 402, and the agent stays where it is.
+    The agent's launchFees quotes what the next request charges.
 
   archive({ agentId })
     Archive the agent.
@@ -622,6 +634,66 @@ RCS AGENTS  (signalHouse.rcs.agents)
 
   Pass options.idempotencyKey on create, update, submit, launch, archive and
   uploadAsset to make a retry safe (see IDEMPOTENT REQUESTS).
+
+
+RCS MESSAGES  (signalHouse.rcs.messages)
+--------------------------------------------------------------------------------
+  Send through an agent. 404 while RCS is off for the environment, 403 while
+  the group's rcsEnabled flag is off, 409 while the agent cannot send yet.
+
+  send({ agentId, recipients, templateId, templateVersion, content,
+         contentFormat, trafficType, ttlSeconds, expireTime, fallback,
+         statusCallbackUrl, enableShortlink, isTest, simulate })
+    POST /message/rcs. Send to up to 100 recipients. A blocked recipient gets a
+    BLOCKED message and the rest still send. Exactly one of templateId or
+    content; at most one of ttlSeconds or expireTime. contentFormat: content.v1
+    (default) | google.rcs. recipients is an array of { phoneNumber, variables,
+    clientMessageId, metadata }. fallback is { mode (auto, rcs_only, sms_only),
+    channel (auto, sms, mms), from, content: { text, mediaUrls },
+    validitySeconds }; without content the template's fallback, else a
+    generated one, is used. simulate: not_capable | ttl_expired | delivered |
+    read, approved testers only. Required: agentId, recipients
+    Returns: { requested, enqueued, failed, bulkId, messages } (201)
+
+  validate({ ...the send parameters })
+    POST /message/rcs/validate. Check a send; writes nothing.
+    Required: agentId, recipients
+    Returns: { valid, errors, warnings, billingClass, segments,
+    estimatedCostMicros, unsupportedFiles, recipients }. It runs a send's
+    checks and holds no funds. valid is true only with no errors.
+
+  estimate({ agentId, recipients, recipientCount, templateId, templateVersion,
+             content, contentFormat, trafficType, ttlSeconds, expireTime,
+             fallback })
+    POST /message/estimate with channel "rcs" added. Price a draft in
+    microdollars; no charge or send. Exactly one of recipients or
+    recipientCount. fallback.from is optional here: with none, the fallback
+    leg is priced on the channel of the agent's linked campaign.
+    Required: agentId
+    Returns: { billingClass, segments, recipientCount, rcsLeg, fallbackLeg,
+    totals, balance, issues, warnings }
+    rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB,
+    already inside rcsLeg.cost; a message over 100 MB adds a MEDIA_TOO_LARGE
+    issue.
+
+  capabilities({ agentId, phoneNumbers })
+    POST /rcs/capabilities. Report which numbers (up to 500) can receive RCS.
+    Required: agentId, phoneNumbers
+    Returns: { results: [{ phoneNumber, capability }] }, capability being
+    ENABLED, UNREACHABLE or UNKNOWN
+
+  get({ messageId })
+    GET /message/:messageId. Get one message; the same route as
+    messages.getMessage. Required: messageId
+
+  list({ groupId, from, to, agentId, status, page, limit, templateId,
+         templateVersion, bulkId, fallbackReason, billingClass,
+         deliveredChannel, isTest })
+    GET /message with messageType=RCS. agentId is sent as registrationId, from
+    as startDate and to as endDate. Required: groupId, from, to
+
+  Pass options.idempotencyKey on send to make a retry safe (see IDEMPOTENT
+  REQUESTS).
 
 
 NOTIFICATIONS  (signalHouse.notifications)
@@ -1019,7 +1091,7 @@ to send SMS to UK recipients. The server appends "\nOpt out: sihou.io/o/{code}"
 to every message from it, counted in segments and in the estimate.
 
 getRegistrations({ groupId, subgroupId, region, type, kind, status,
-parentRegistrationId, phoneNumber, brandId, campaignId (RCS agents linked to that 10DLC
+parentRegistrationId, phoneNumber, brandId, campaignId (RCS agents linked to that
 brand or campaign), sortBy (createdAt default, subgroupId, registrationId,
 region or status), sortOrder (asc or desc, default desc), page, limit }) returns { data: [registrations], totalCount, page,
 limit }; status and region take one value or an array. Staff may omit groupId to read
@@ -1073,19 +1145,17 @@ the SDK sends it as JSON. Example:
  { region: "GB", channels: ["virtualLongCode"], phoneNumber: ["447400123456"] }]
 Group authorization and the subgroup/carrier/date filters apply outside the OR. [] matches
 nothing; omitting regionScopes keeps the existing filtering. getMessages always accepts
-both; the analytics and DNC methods accept them only where the environment serves hourly
-analytics and return 400 elsewhere.
+both, as do the analytics and DNC methods.
 
 getAnalytics, getAnalyticsDetail, getAnalyticsThroughput and getDncAnalytics accept
 registrationId (one id or an array, sent as repeated query keys like campaignId): filter
-to traffic attributed to these registrations (hourly analytics only; a 400 while hourly
-reads are off). Except on getAnalyticsThroughput, which has no phoneNumber filter, a
+to traffic attributed to these registrations. Except on getAnalyticsThroughput, which has no phoneNumber filter, a
 phoneNumber filter takes precedence. getPhoneNumbers accepts a single registrationId to
 list the numbers provisioned under that registration.
 
 getAnalyticsBySubgroup, getAnalyticsByErrorCode and getDncRecords accept registrationId
-the same way, with the same hourly-only rule and precedence. getMessages accepts
-registrationId in every environment: it filters to messages attributed to those
+the same way, with the same precedence. getMessages accepts
+registrationId: it filters to messages attributed to those
 registrations, and a phoneNumber filter narrows further. Every method returns 400 when
 registrationId is combined with campaignId.
 
