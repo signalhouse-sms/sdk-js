@@ -158,6 +158,7 @@
  * @property {number|null} [maxCallDurationSeconds] - Hard ceiling on one conversation (60-7200).
  * @property {boolean} [allowGreetingInterruption] - Whether a caller may talk over the greeting.
  * @property {string[]} [keyterms] - Words the transcriber is biased toward — names, jargon, unusual spellings.
+ * @property {Array<{kind: string, detail?: string|null}>} [allowedCommitments] - SMS channel only: the "a person will..." promises the agent may send on autopilot. Each `kind` is one of "confirm_booking", "call_back", "text_back", "follow_up", "hold_slot" or "send_reminder", listed at most once; `detail` (up to 200 characters) is shown to staff. Any other promise is held for review. Sending a non-empty list on webchat or voice is a 400.
  * @property {Object|null} [backgroundSound] - Ambient audio bed as `{ preset, volume }`; null = silence.
  * @property {AgentWorkflow|null} [workflow] - Conversation workflow graph. Voice channel only — sending one on webchat or sms is a 400. null = no workflow.
  */

@@ -605,7 +605,7 @@ await signalHouse.notifications.deleteNotification({
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `getPhoneNumbers` | `{ phoneNumber, campaignId, brandId, subgroupId, groupId, currentTollFreeCarrier, page, limit }` | List your phone numbers with filters. With `subgroupId` or `groupId`, `currentTollFreeCarrier: true` returns only toll-free numbers that a new toll-free campaign in that group can use |
+| `getPhoneNumbers` | `{ phoneNumber, campaignId, brandId, subgroupId, groupId, currentTollFreeCarrier, released, page, limit }` | List your phone numbers with filters. With `subgroupId` or `groupId`, `currentTollFreeCarrier: true` returns only toll-free numbers that a new toll-free campaign in that group can use. With `subgroupId` or `groupId`, `released: true` returns only its released numbers instead of its active ones |
 | `getAvailablePhoneNumbers` | `{ smsEnabled, mmsEnabled, voiceEnabled, country, state, npa, nxx, phoneNumber, limit, page }` | Search available numbers for purchase |
 | `purchasePhoneNumber` | `{ phoneNumbers, subgroupId }` | Purchase one or more phone numbers |
 | `updatePhoneNumber` | `{ phoneNumber, updateData }` | Update phone number details (e.g., friendly name) |

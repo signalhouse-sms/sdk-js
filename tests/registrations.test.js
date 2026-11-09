@@ -237,6 +237,17 @@ test("getPhoneNumbers forwards currentTollFreeCarrier and leaves it out when not
 	assert.equal(params(calls[1].path).has("currentTollFreeCarrier"), false);
 });
 
+test("getPhoneNumbers forwards released and leaves it out when not given", async () => {
+	const { client, calls } = captureClient();
+	const domain = new Numbers(client);
+	await domain.getPhoneNumbers({ groupId: "G0000001", released: true, options: { token: "session" } });
+	assert.equal(pathname(calls[0].path), "/number");
+	assert.equal(params(calls[0].path).get("groupId"), "G0000001");
+	assert.equal(params(calls[0].path).get("released"), "true");
+	await domain.getPhoneNumbers({ groupId: "G0000001" });
+	assert.equal(params(calls[1].path).has("released"), false);
+});
+
 test("getBrands forwards currentTollFreeCarrier", async () => {
 	const { client, calls } = captureClient();
 	await new Brands(client).getBrands({ groupId: "G0000001", currentTollFreeCarrier: true, options: { token: "session" } });
