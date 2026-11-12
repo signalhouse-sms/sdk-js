@@ -19,15 +19,16 @@ export class Webhooks {
 	 * @param {Object} params - The parameters for getting webhooks
 	 * @param {string} [params.id] - Filter by webhook ID
 	 * @param {string} [params.groupId] - Filter by associated group ID
-	 * @param {string} [params.endpointType] - Filter by endpoint type (Global, Number)
+	 * @param {string} [params.endpointType] - Filter by endpoint type (Global, Number, Agent)
 	 * @param {string} [params.phoneNumber] - Filter by associated phone number (for SMS webhooks)
+	 * @param {string} [params.agentId] - Filter by RCS agent (for Agent webhooks)
 	 * @param {number} [params.page] - The page number for pagination
 	 * @param {number} [params.limit] - The number of items per page for pagination
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @returns {Promise<SdkResponse<Array>>} The response from the server
 	 */
-	async getWebhooks({ id, groupId, endpointType, phoneNumber, page, limit, options = {} }) {
-		const filters = { id, groupId, endpointType, phoneNumber, page, limit };
+	async getWebhooks({ id, groupId, endpointType, phoneNumber, agentId, page, limit, options = {} }) {
+		const filters = { id, groupId, endpointType, phoneNumber, agentId, page, limit };
 		const queryString = this.client._getQueryString(filters);
 		return this.client(`/webhook${queryString}`, { method: "GET", ...options });
 	}
@@ -46,7 +47,9 @@ export class Webhooks {
 	 * `webhookData.eventSettings` holds per-event options keyed by event name:
 	 * `NUMBER_HEALTH_BELOW_THRESHOLD` and `CAMPAIGN_HEALTH_BELOW_THRESHOLD` each take `{ threshold }`, the 7-day
 	 * health score (1.5–10, in 0.5 steps) below which the event fires; a subscribed health event without one is
-	 * stored with the default, 6.
+	 * stored with the default, 6. `webhookData.endpointType` is `Global`, `Number` or `Agent`. An `Agent` endpoint
+	 * receives one RCS agent's events only: it needs `agentId`, and may set `secondaryUrl`, which gets one try when
+	 * every attempt to `url` fails.
 	 * @async
 	 * @roles api, admin, developer
 	 * @param {Object} params - The parameters for creating a webhook
@@ -68,7 +71,8 @@ export class Webhooks {
 	 * the stored credentials; `HMAC` is rejected for an endpoint with no signing secret (call
 	 * `rotateWebhookSecret` first). `updateData.eventSettings` changes per-event options by event name
 	 * (`{ NUMBER_HEALTH_BELOW_THRESHOLD: { threshold } }`, `{ CAMPAIGN_HEALTH_BELOW_THRESHOLD: { threshold } }`,
-	 * 1.5–10 in 0.5 steps); events you omit keep their stored settings. Like every read of a webhook, the
+	 * 1.5–10 in 0.5 steps); events you omit keep their stored settings. `updateData.secondaryUrl` changes an
+	 * `Agent` endpoint's secondary URL, and `null` clears it. Like every read of a webhook, the
 	 * response carries `hasSigningSecret` and `hasCredentials` (booleans), never a secret or credential.
 	 * @async
 	 * @roles api, admin, developer

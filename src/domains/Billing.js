@@ -70,11 +70,14 @@ export class Billing {
 	 * @param {string} [params.transactionType] - The type of transaction to filter by
 	 * @param {string} [params.startDate] - ISO-8601 date or timestamp; normalized to start-of-UTC-day (inclusive)
 	 * @param {string} [params.endDate] - ISO-8601 date or timestamp; normalized to end-of-UTC-day (inclusive). Hourly resolution is not supported
+	 * @param {string} [params.category] - One category, or a comma-separated list: one of the RCS categories RCS_RICH_OUTBOUND, RCS_RICH_MEDIA_OUTBOUND, RCS_INBOUND, RCS_ACTION_CLICK, RCS_MEDIA_SURCHARGE, RCS_FEE_ONBOARDING, RCS_FEE_RENEWAL, RCS_SESSION_ADJUSTMENT or RCS_SESSION_CARRIER_ADJUSTMENT, or RCS_CARRIER_PASSTHROUGH for RCS carrier rows alone. Any other value is rejected with a 400.
+	 * @param {number} [params.page] - Page number (positive integer)
+	 * @param {number} [params.limit] - Page size, at most 1000
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @returns {Promise<SdkResponse<Array>>} The response from the server
 	 */
-	async getTransactionHistory({ groupId, subgroupId, brandId, campaignId, entryType, transactionType, startDate, endDate, options = {} }) {
-		const filters = { groupId, subgroupId, brandId, campaignId, entryType, transactionType, startDate, endDate };
+	async getTransactionHistory({ groupId, subgroupId, brandId, campaignId, entryType, transactionType, startDate, endDate, category, page, limit, options = {} }) {
+		const filters = { groupId, subgroupId, brandId, campaignId, entryType, transactionType, startDate, endDate, category, page, limit };
 		const queryString = this.client._getQueryString(filters);
 		return this.client(`/billing/wallet/transactionHistory${queryString}`, { method: "GET", ...options });
 	}

@@ -225,7 +225,7 @@ export class Brands {
    * @param {boolean} [params.excludeDeleted] - Staff-only: hide DELETED brands when no status is given
    * @param {boolean} [params.includeTotal] - Staff-only: with page and limit, return `{ data, total, page, limit, totalPages }` instead of the array
    * @param {RequestOptions} [params.options] - Additional options for the request
-   * @returns {Promise<SdkResponse<Array<{ _id: string, brandId: string|null, status: string, registrationType: string, tollFree?: { isBrandReady?: boolean, maxNumbersPerCampaign?: number, maxOptInMethods?: number, requiresPrivacyPolicy?: boolean, requiresTermsAndConditions?: boolean, maxAppealReasonLength?: number, labelsSamples?: boolean, supportsMms?: boolean, reviewsBusinessOnSubmit?: boolean, businessStructure?: string|null, industry?: string|null, contactEmail?: string|null, contactJobTitle?: string|null, contactJobLevel?: string|null, rejectionReason?: string|null, [key: string]: any }, [key: string]: any }>|{ data: Array<Object>, total: number, page: number, limit: number, totalPages: number }>>} Brand records. For 10DLC brands in PENDING_CREATION (or rejected before carrier assignment), brandId is null — poll by _id until status advances and brandId is assigned. Toll-free brands carry `tollFree.isBrandReady` (whether the brand can host campaigns), `tollFree.maxNumbersPerCampaign` (the most numbers one of its campaigns can hold), `tollFree.maxOptInMethods` (the most opt-in methods one of its campaigns can declare), `tollFree.requiresPrivacyPolicy` (whether its campaigns need a privacy policy URL), `tollFree.requiresTermsAndConditions` (whether its campaigns need a terms and conditions URL), `tollFree.maxAppealReasonLength` (the longest appeal reason its campaigns may give), `tollFree.labelsSamples` (whether its campaigns' sample messages each start with their use case's name), `tollFree.supportsMms` (whether its numbers can send MMS and group messages) and `tollFree.reviewsBusinessOnSubmit` (whether it's reviewed when it's submitted and keeps its business details from then on). A brand reviewed on submit also carries its `tollFree.businessStructure`, `tollFree.industry`, `tollFree.contactEmail`, `tollFree.contactJobTitle` and `tollFree.contactJobLevel`, and `tollFree.rejectionReason` (why its review rejected it, in plain English, or null). On other toll-free brands these are null or absent. The staff-only list (no id/subgroupId/groupId) returns the `{ data, total, page, limit, totalPages }` envelope only when includeTotal is sent with page and limit. Each brand carries `carrierSuspensions` (carrier brand suspension rules; active while liftedAt is null).
+   * @returns {Promise<SdkResponse<Array<{ _id: string, brandId: string|null, status: string, registrationType: string, tollFree?: { isBrandReady?: boolean, maxNumbersPerCampaign?: number, maxOptInMethods?: number, requiresPrivacyPolicy?: boolean, requiresTermsAndConditions?: boolean, maxAppealReasonLength?: number, labelsSamples?: boolean, supportsMms?: boolean, reviewsBusinessOnSubmit?: boolean, businessStructure?: string|null, industry?: string|null, contactEmail?: string|null, contactJobTitle?: string|null, contactJobLevel?: string|null, rejectionReason?: string|null, [key: string]: any }, [key: string]: any }>|{ data: Array<Object>, total: number, page: number, limit: number, totalPages: number }>>} Brand records. For 10DLC brands in PENDING_CREATION (or rejected before carrier assignment), brandId is null — poll by _id until status advances and brandId is assigned. Toll-free brands carry `tollFree.isBrandReady` (whether the brand can host campaigns), `tollFree.maxNumbersPerCampaign` (the most numbers one of its campaigns can hold), `tollFree.maxOptInMethods` (the most opt-in methods one of its campaigns can declare), `tollFree.requiresPrivacyPolicy` (whether its campaigns need a privacy policy URL), `tollFree.requiresTermsAndConditions` (whether its campaigns need a terms and conditions URL), `tollFree.maxAppealReasonLength` (the longest appeal reason its campaigns may give), `tollFree.labelsSamples` (whether its campaigns' sample messages each start with their use case's name), `tollFree.supportsMms` (whether its numbers can send MMS and group messages) and `tollFree.reviewsBusinessOnSubmit` (whether it's reviewed when it's submitted and keeps its business details from then on). A brand reviewed on submit also carries its `tollFree.businessStructure`, `tollFree.industry`, `tollFree.contactEmail`, `tollFree.contactJobTitle` and `tollFree.contactJobLevel`, and `tollFree.rejectionReason` (why its review rejected it, in plain English, or null). On other toll-free brands these are null or absent. The staff-only list (no id/subgroupId/groupId) returns the `{ data, total, page, limit, totalPages }` envelope only when includeTotal is sent with page and limit. Each brand carries `carrierSuspensions` (carrier brand suspension rules; active while liftedAt is null). Each brand also carries `cnamName` (its caller name for numbers, or null; see getCallerName).
    */
   async getBrands({
     id,
@@ -540,5 +540,60 @@ export class Brands {
     formData.append('explanation', explanation);
     formData.append('file', file);
     return this.multipartClient(`/brand/appeal/${safeBrandId}`, { method: 'POST', body: formData, ...options });
+  }
+
+  /**
+   * Get a brand's caller name (CNAM) and the numbers it applies to: every number whose caller name comes from this
+   * brand (its campaign numbers, numbers it was picked on, and campaign-less numbers of subgroups that use it as
+   * their default caller-ID brand)
+   * @async
+   * @roles api, admin, developer, billing, user
+   * @param {Object} params - The parameters for the request
+   * @param {BrandLookupId} params.brandId - Brand lookup id (carrier Brand ID, record `_id`, or internal reference).
+   * @param {RequestOptions} [params.options] - Additional options for the request
+   * @throws {Error} Throws an error if the brandId parameter is missing
+   * @returns {Promise<SdkResponse<{ brandId: string, companyName: string, cnamName: string|null, eligible: boolean, numbers: { total: number, items: Array<{ phoneNumber: string, friendlyName: string|null, cnam: Object|null }> } }>>} The brand's caller name (null when it has none) and its numbers; `items` lists the first 100
+   */
+  async getCallerName({ brandId, options = {} }) {
+    this.client._require({ brandId });
+    const safeBrandId = encodeURIComponent(brandId);
+    return this.client(`/brand/cnam/${safeBrandId}`, { method: 'GET', ...options });
+  }
+
+  /**
+   * Set a brand's caller name (CNAM). It replaces the caller name on every number whose caller name comes from this
+   * brand, names set on a number included, and numbers that later come under the brand get it too. The name may only
+   * remove characters from the brand's registered name and must be 1-15 letters, digits, spaces, `-` or `_`; the brand
+   * must be verified. Numbers are updated at the carrier in the background (their `cnam.status` is PENDING until then).
+   * @async
+   * @roles api, admin, developer
+   * @param {Object} params - The parameters for the request
+   * @param {BrandLookupId} params.brandId - Brand lookup id (carrier Brand ID, record `_id`, or internal reference).
+   * @param {string} params.name - The caller name to show
+   * @param {RequestOptions} [params.options] - Additional options for the request
+   * @throws {Error} Throws an error if the brandId or name parameter is missing
+   * @returns {Promise<SdkResponse<any>>} A promise that resolves to `{ brandId, companyName, cnamName, eligible, numbers: { total, items } }`
+   */
+  async setCallerName({ brandId, name, options = {} }) {
+    this.client._require({ brandId, name });
+    const safeBrandId = encodeURIComponent(brandId);
+    return this.client(`/brand/cnam/${safeBrandId}`, { method: 'PUT', body: { name }, ...options });
+  }
+
+  /**
+   * Remove a brand's caller name (CNAM). Numbers that had it go back to the automatic name if their subgroup has
+   * caller name auto-apply on, otherwise to no caller name. Names set on a number are kept.
+   * @async
+   * @roles api, admin, developer
+   * @param {Object} params - The parameters for the request
+   * @param {BrandLookupId} params.brandId - Brand lookup id (carrier Brand ID, record `_id`, or internal reference).
+   * @param {RequestOptions} [params.options] - Additional options for the request
+   * @throws {Error} Throws an error if the brandId parameter is missing
+   * @returns {Promise<SdkResponse<any>>} A promise that resolves to `{ brandId, companyName, cnamName, eligible, numbers: { total, items } }`
+   */
+  async deleteCallerName({ brandId, options = {} }) {
+    this.client._require({ brandId });
+    const safeBrandId = encodeURIComponent(brandId);
+    return this.client(`/brand/cnam/${safeBrandId}`, { method: 'DELETE', ...options });
   }
 }

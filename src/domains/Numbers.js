@@ -317,7 +317,8 @@ export class Numbers {
    * @param {string} params.phoneNumber - The phone number (E.164, leading + optional)
    * @param {RequestOptions} [params.options] - Additional options for the request
    * @throws {Error} Throws an error if the phoneNumber parameter is missing
-   * @returns {Promise<SdkResponse<any>>} A promise that resolves to `{ phoneNumber, cnam, autoApply, eligible, ineligibleReason }`
+   * @returns {Promise<SdkResponse<any>>} A promise that resolves to `{ phoneNumber, cnam, autoApply, eligible, ineligibleReason }`;
+   *   `cnam.source` is MANUAL (set on the number), BRAND (the brand's caller name) or AUTO (subgroup auto-apply)
    */
   async getCallerName({ phoneNumber, options = {} }) {
     this.client._require({ phoneNumber });
@@ -347,8 +348,8 @@ export class Numbers {
   }
 
   /**
-   * Remove a phone number's own caller name (CNAM). If its subgroup has caller name auto-apply on, the
-   * number goes back to the automatic name.
+   * Remove a phone number's own caller name (CNAM). The number goes back to its brand's caller name if the brand
+   * has one (see brands.setCallerName), else to the automatic name if its subgroup has caller name auto-apply on.
    * @async
    * @roles api, admin, developer
    * @param {Object} params - The parameters for the request

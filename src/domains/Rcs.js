@@ -107,7 +107,7 @@ export class RcsAgents {
 	 * @param {RcsAgentConsent} [params.consent] - The launch text; required in full before the launch request
 	 * @param {RcsAgentContact} [params.contact] - The launch contact; required in full before the launch request
 	 * @param {("OTP"|"TRANSACTIONAL"|"PROMOTIONAL"|"MULTI_USE")} [params.useCase] - The agent's use case; required before submit
-	 * @param {("NON_CONVERSATIONAL"|"CONVERSATIONAL")} [params.billingCategory] - Default NON_CONVERSATIONAL; submit refuses CONVERSATIONAL
+	 * @param {("NON_CONVERSATIONAL"|"CONVERSATIONAL")} [params.billingCategory] - Default NON_CONVERSATIONAL (per message); CONVERSATIONAL is billed per interactive session
 	 * @param {{ mode?: string, channel?: string, from?: string }|null} [params.defaultFallback] - Fallback mode (auto, rcs_only, sms_only, none), channel (auto, sms, mms) and from, a number on the linked campaign
 	 * @param {string[]} [params.excludedCarriers] - [] or ["T_MOBILE"] (the carrier partner's carrier name)
 	 * @param {string[]} [params.testers] - Tester numbers (up to 200), invited once the agent exists at the carrier
@@ -130,7 +130,7 @@ export class RcsAgents {
 	 * @param {Object} [params] - Filters
 	 * @param {string} [params.groupId] - Filter by group ID
 	 * @param {string} [params.subgroupId] - Filter by subgroup ID
-	 * @param {string|string[]} [params.status] - DRAFT, PENDING_REVIEW, REJECTED, AGENT_CREATING or ARCHIVED, one or a list
+	 * @param {string|string[]} [params.status] - DRAFT, PENDING_REVIEW, REJECTED, AGENT_CREATING, ARCHIVE_PENDING or ARCHIVED, one or a list
 	 * @param {string} [params.brandId] - Agents linked to this brand (carrier brand ID, provisional UUID or _id)
 	 * @param {string} [params.campaignId] - Agents linked to this campaign (campaign ID or _id)
 	 * @param {number} [params.page] - Page number (default 1)
@@ -190,7 +190,7 @@ export class RcsAgents {
 
 	/**
 	 * Check an agent against the next gate on its path without writing: before it exists at the carrier partner, what
-	 * creating it needs (the full profile, useCase, NON_CONVERSATIONAL billing); after that, what the launch request needs
+	 * creating it needs (the full profile, useCase, a billingCategory); after that, what the launch request needs
 	 * (a VERIFIED brand, the campaign, the full consent with the video, the contact)
 	 * @async
 	 * @roles api, admin, developer, billing, user
@@ -206,7 +206,7 @@ export class RcsAgents {
 
 	/**
 	 * Submit a draft: create the agent at the carrier partner, with no review first. It needs the full profile, a
-	 * useCase and NON_CONVERSATIONAL billing; otherwise a 400 whose details carry { code: "REGISTRATION_INCOMPLETE",
+	 * useCase and a billingCategory; otherwise a 400 whose details carry { code: "REGISTRATION_INCOMPLETE",
 	 * errors, warnings }. The agent moves to AGENT_CREATING, then IN_TESTING once the partner reports it ready.
 	 * @async
 	 * @roles api, admin, developer, billing, user
@@ -225,27 +225,30 @@ export class RcsAgents {
 	 * PENDING_REVIEW), whose approval files the launch with the carrier partner. Allowed from IN_TESTING, REJECTED and
 	 * CARRIER_REJECTED (409 otherwise); a failed requirement is a 400 whose details carry { code:
 	 * "REGISTRATION_INCOMPLETE", errors, warnings }. Sends POST /registration/:agentId/launch: the agent is a registration.
-	 * The request charges the agent's launch fees: a wallet that cannot cover them gets a 402, and the agent stays where it is. The agent's launchFees quotes what the next request charges.
+	 * The request charges the agent's launch fees: a wallet that cannot cover them gets a 402, and the agent stays where it is. When any fee is due the request must set acknowledgeFees: true, or it gets a 400 with code FEE_ACKNOWLEDGEMENT_REQUIRED and nothing is held; a launch with nothing due needs no acknowledgement. The agent's launchFees quotes what the next request charges.
+	 * When the agent's brand vertical is healthcare or insurance, the launch needs the protected health information (PHI) disclosure acknowledged: send acknowledgePhi: true, or the request gets a 400 REGISTRATION_INCOMPLETE whose errors name consent.phiAcknowledgement. The API records the acknowledgement as consent.phiAcknowledgement { acknowledgedAt, acknowledgedBy } from the caller; the client sends only the boolean, and an agent update cannot set it. Once recorded, a later launch request needs no new acknowledgement.
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The launch request
 	 * @param {string} params.agentId - The agent ID
+	 * @param {boolean} [params.acknowledgeFees] - Accept the fees due; required when any are
+	 * @param {boolean} [params.acknowledgePhi] - Accept the PHI disclosure; required for a healthcare or insurance brand
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the agent (status PENDING_REVIEW)
 	 */
-	async launch({ agentId, options = {} }) {
+	async launch({ agentId, acknowledgeFees, acknowledgePhi, options = {} }) {
 		this.client._require({ agentId });
-		return this.client(`/registration/${encodeURIComponent(agentId)}/launch`, { method: "POST", ...options });
+		return this.client(`/registration/${encodeURIComponent(agentId)}/launch`, { method: "POST", body: { acknowledgeFees, acknowledgePhi }, ...options });
 	}
 
 	/**
-	 * Archive an agent
+	 * Archive an agent. One the carrier partner created stops sending at once and stays ARCHIVE_PENDING until Signal House confirms the partner cancelled it, then ARCHIVED. Archiving cannot be undone; an agent already ARCHIVE_PENDING answers 409.
 	 * @async
 	 * @roles api, admin, developer, user
 	 * @param {Object} params - The archive request
 	 * @param {string} params.agentId - The agent ID
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the agent (status ARCHIVED)
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the agent (status ARCHIVE_PENDING or ARCHIVED)
 	 */
 	async archive({ agentId, options = {} }) {
 		this.client._require({ agentId });
@@ -266,6 +269,22 @@ export class RcsAgents {
 	async resendTesterInvite({ agentId, phoneNumber, options = {} }) {
 		this.client._require({ agentId, phoneNumber });
 		return this.client(`/rcs/agent/${encodeURIComponent(agentId)}/testers/${encodeURIComponent(phoneNumber)}/resend`, { method: "POST", ...options });
+	}
+
+	/**
+	 * Remove a tester at once, at any point before the agent is archived. The number must be a tester on the agent (404);
+	 * an archived agent answers 409.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The removal
+	 * @param {string} params.agentId - The agent ID
+	 * @param {string} params.phoneNumber - The tester's US number, with or without the +
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the agent
+	 */
+	async removeTester({ agentId, phoneNumber, options = {} }) {
+		this.client._require({ agentId, phoneNumber });
+		return this.client(`/rcs/agent/${encodeURIComponent(agentId)}/testers/${encodeURIComponent(phoneNumber)}`, { method: "DELETE", ...options });
 	}
 
 	/**
@@ -326,7 +345,7 @@ export class RcsMessages {
 	 * @param {boolean} [params.isTest] - Send as a test; approved testers only
 	 * @param {("not_capable"|"ttl_expired"|"delivered"|"read")} [params.simulate] - Simulate this outcome; approved testers only
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { requested, enqueued, failed, bulkId, messages } (201). A blocked row carries blockReason, reason and issues; an archived template answers 409 TEMPLATE_ARCHIVED
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { requested, enqueued, failed, bulkId, messages } (201). A blocked row carries blockReason, reason and issues; an archived template answers 409 TEMPLATE_ARCHIVED. A recipient from 19999990000 to 19999990359 makes the whole request a simulation, as on SMS: it resolves to { simulated: true, webhooks } and nothing is stored, sent or charged
 	 */
 	async send({ agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate, options = {} }) {
 		this.client._require({ agentId, recipients });
@@ -385,7 +404,7 @@ export class RcsMessages {
 	 * @param {string} [params.expireTime] - ISO-8601 time the RCS message expires
 	 * @param {RcsMessageFallback} [params.fallback] - The fallback to price; its from is optional here, and with none the leg is priced on the channel of the agent's linked campaign
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { billingClass, segments, recipientCount, rcsLeg, fallbackLeg, totals, balance, issues, warnings }; rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB, already inside rcsLeg.cost; a message over 100 MB adds a MEDIA_TOO_LARGE issue.
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { billingClass, segments, recipientCount, rcsLeg, fallbackLeg, totals, balance, issues, warnings }; rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB for one recipient, and rcsLeg.cost already holds it for every recipient; rcsLeg.cost is null with the fallback mode sms_only; a message over 100 MB adds a MEDIA_TOO_LARGE issue.
 	 */
 	async estimate({ agentId, recipients, recipientCount, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, options = {} }) {
 		this.client._require({ agentId });
@@ -404,11 +423,34 @@ export class RcsMessages {
 	 * @param {string} params.agentId - The agent (RCSA…)
 	 * @param {string[]} params.phoneNumbers - Up to 500 numbers, 10-15 digits, with or without the +
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { results: [{ phoneNumber, capability }] }, capability being ENABLED, UNREACHABLE or UNKNOWN
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { results: [{ phoneNumber, capability, rcsEnabled, reason, features, carrier, checkedAt, cached }] }, capability being ENABLED, UNREACHABLE or UNKNOWN, and reason CAPABLE, NOT_CAPABLE, NOT_LAUNCHED_ON_CARRIER or UNKNOWN; rcsEnabled is true only for CAPABLE, carrier and checkedAt may be null, and features is empty today
 	 */
 	async capabilities({ agentId, phoneNumbers, options = {} }) {
 		this.client._require({ agentId, phoneNumbers });
 		return this.client("/rcs/capabilities", { method: "POST", body: { agentId, phoneNumbers }, ...options });
+	}
+
+	/**
+	 * Fake an inbound event from an approved tester of the agent, with no carrier involved: it runs the real inbound handlers and webhooks, as free test traffic. A simulated STOP really opts the tester out; a simulated START clears it. Anyone else gets a 403 with code NOT_TESTER. Returns 202 with { status, messageId }.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The event
+	 * @param {string} params.agentId - The agent (RCSA…)
+	 * @param {string} params.from - The approved tester's number
+	 * @param {string} params.type - TEXT, SUGGESTION, LOCATION, FILE or UNSUBSCRIBE
+	 * @param {string} [params.text] - The text; required for TEXT
+	 * @param {string} [params.postbackData] - The tapped suggestion's postback; SUGGESTION needs this or buttonId
+	 * @param {string} [params.messageId] - The message a tap answers; the latest message delivered to the tester by default
+	 * @param {string} [params.buttonId] - The suggestion's position, as webhooks report it
+	 * @param {number} [params.latitude] - Required for LOCATION
+	 * @param {number} [params.longitude] - Required for LOCATION
+	 * @param {string} [params.fileName] - The file's name, for FILE
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { status: "QUEUED", messageId }
+	 */
+	async simulateInbound({ agentId, from, type, text, postbackData, messageId, buttonId, latitude, longitude, fileName, options = {} }) {
+		this.client._require({ agentId, from, type });
+		return this.client("/message/rcs/simulate-inbound", { method: "POST", body: { agentId, from, type, text, postbackData, messageId, buttonId, latitude, longitude, fileName }, ...options });
 	}
 
 	/**
@@ -450,7 +492,7 @@ export class RcsMessages {
 	 */
 	async list({ groupId, from, to, agentId, status, page, limit, templateId, templateVersion, bulkId, fallbackReason, billingClass, deliveredChannel, isTest, options = {} }) {
 		this.client._require({ groupId, from, to });
-		const queryString = this.client._getQueryString({ registrationId: agentId, startDate: from, endDate: to, groupId, status, page, limit, templateId, templateVersion, bulkId, fallbackReason, billingClass, deliveredChannel, isTest, messageType: "RCS" });
+		const queryString = this.client._getQueryString({ registrationId: agentId, startDate: from, endDate: to, groupId, status, page, limit, templateId, templateVersion, bulkId, fallbackReason, billingClass, deliveredChannel, isTest, messageType: "RCS", dateBounds: "exact" });
 		return this.client(`/message${queryString}`, { method: "GET", ...options });
 	}
 }

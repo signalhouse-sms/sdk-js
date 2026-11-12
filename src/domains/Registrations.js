@@ -24,16 +24,18 @@ export class Registrations {
 				 * @param {Object} params - The parameters for the review decision
 				 * @param {string} params.registrationId - The registration ID (e.g. GB8T9GTD5AZY)
 				 * @param {("APPROVE"|"REJECT")} params.action - The review decision
-				 * @param {string} [params.reason] - Why the registration was rejected; required when action is REJECT
+				 * @param {string} [params.reason] - Why the registration was rejected; required when action is REJECT. An RCS agent takes 10 to 256 characters
+				 * @param {string} [params.reasonCode] - The rejection catalogue code; required to reject an RCS agent, refused for any other type
+				 * @param {Array<{ field?: string|null, code: string, reason: string, recommendedAction?: string|null }>} [params.rejectionReasons] - Field-level reasons for an RCS agent
 				 * @param {RequestOptions} [params.options] - Additional options for the request
 				 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the updated registration
 				 */
-				reviewRegistration: async ({ registrationId, action, reason, options = {} }) => {
+				reviewRegistration: async ({ registrationId, action, reason, reasonCode, rejectionReasons, options = {} }) => {
 					this.client._require({ registrationId, action });
 					const safeId = encodeURIComponent(registrationId);
 					return this.client(`/registration/${safeId}/review`, {
 						method: "POST",
-						body: { action, reason },
+						body: { action, reason, ...(reasonCode !== undefined && { reasonCode }), ...(rejectionReasons !== undefined && { rejectionReasons }) },
 						...options,
 					});
 				},
@@ -115,6 +117,45 @@ export class Registrations {
 					return this.client(`/registration/${safeId}/application`, {
 						method: "GET",
 						responseType: "arraybuffer",
+						...options,
+					});
+				},
+
+				/**
+				 * Give an RCS agent an assignee in the staff review queue, or clear it (signalhouse only)
+				 * @async
+				 * @roles signalhouse
+				 * @param {Object} params - The parameters for the assignment
+				 * @param {string} params.registrationId - The agent's registration ID (e.g. RCSA7K2M1QZ8RP)
+				 * @param {string|null} params.userId - An active Signal House staff user; null clears the assignee
+				 * @param {RequestOptions} [params.options] - Additional options for the request
+				 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the registration, as staff read it
+				 */
+				assignRegistration: async ({ registrationId, userId, options = {} }) => {
+					this.client._require({ registrationId });
+					if (userId === undefined) throw new Error("userId is required; pass null to clear the assignee");
+					const safeId = encodeURIComponent(registrationId);
+					return this.client(`/registration/${safeId}/assignee`, {
+						method: "PUT",
+						body: { userId },
+						...options,
+					});
+				},
+
+				/**
+				 * Nudge the owner of an RCS agent waiting in an SLA state, at most once per business day (signalhouse only)
+				 * @async
+				 * @roles signalhouse
+				 * @param {Object} params - The parameters for the nudge
+				 * @param {string} params.registrationId - The agent's registration ID (e.g. RCSA7K2M1QZ8RP)
+				 * @param {RequestOptions} [params.options] - Additional options for the request
+				 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the registration, as staff read it
+				 */
+				nudgeRegistration: async ({ registrationId, options = {} }) => {
+					this.client._require({ registrationId });
+					const safeId = encodeURIComponent(registrationId);
+					return this.client(`/registration/${safeId}/nudge`, {
+						method: "POST",
 						...options,
 					});
 				},
@@ -257,18 +298,21 @@ export class Registrations {
 	 * Allowed while the provider reports the agent ready for testing, after a Signal House rejection, or after every
 	 * carrier refused an earlier launch (409 otherwise); a failed requirement is a 400 whose details carry
 	 * { code: "REGISTRATION_INCOMPLETE", errors, warnings }.
-	 * An RCS agent's launch request charges its launch fees: a wallet that cannot cover them gets a 402, and nothing changes.
+	 * An RCS agent's launch request charges its launch fees: a wallet that cannot cover them gets a 402, and nothing changes. When any fee is due the request must set acknowledgeFees: true, or it gets a 400 with code FEE_ACKNOWLEDGEMENT_REQUIRED and nothing is held; a launch with nothing due needs no acknowledgement.
+	 * When the agent's brand vertical is healthcare or insurance, the launch needs the protected health information (PHI) disclosure acknowledged: send acknowledgePhi: true, or the request gets a 400 REGISTRATION_INCOMPLETE whose errors name consent.phiAcknowledgement. The API records the acknowledgement as consent.phiAcknowledgement { acknowledgedAt, acknowledgedBy } from the caller; the client sends only the boolean, and an agent update cannot set it. Once recorded, a later launch request needs no new acknowledgement.
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The parameters for the launch request
 	 * @param {string} params.registrationId - The registration ID (e.g. RCSA7K2M1QZ8RP)
+	 * @param {boolean} [params.acknowledgeFees] - Accept the fees due; required when any are
+	 * @param {boolean} [params.acknowledgePhi] - Accept the PHI disclosure; required for a healthcare or insurance brand
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the registration, now SIGNAL_HOUSE_REVIEW
 	 */
-	async launchRegistration({ registrationId, options = {} }) {
+	async launchRegistration({ registrationId, acknowledgeFees, acknowledgePhi, options = {} }) {
 		this.client._require({ registrationId });
 		const safeId = encodeURIComponent(registrationId);
-		return this.client(`/registration/${safeId}/launch`, { method: "POST", ...options });
+		return this.client(`/registration/${safeId}/launch`, { method: "POST", body: { acknowledgeFees, acknowledgePhi }, ...options });
 	}
 
 	/**

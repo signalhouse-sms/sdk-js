@@ -396,6 +396,7 @@ await signalHouse.landings.updateLanding({
 |--------|-----------|-------------|
 | `getMessages` | `{ id, campaignId, brandId, subgroupId, groupId, status, direction, messageType, carrier, sentimentLabel, startDate, endDate, sortField, sortOrder, page, limit, templateId, templateVersion, bulkId, fallbackReason, billingClass, deliveredChannel, isTest }` | List messages with filters; the last seven filter RCS messages |
 | `getMessage` | `{ id }` | Get one message of any type |
+| `getMessageInteractions` | `{ id }` | Get the taps on one RCS message |
 | `getAnalytics` | `{ groupId, subgroupId, brandId, campaignId, phoneNumber, carrier, startDate, endDate }` | Get aggregated message analytics |
 | `sendSMS` | `{ senderPhoneNumber, recipientPhoneNumbers, messageBody, statusCallbackUrl, enableShortlink }` | Send an SMS message |
 | `sendMMS` | `{ senderPhoneNumber, recipientPhoneNumbers, messageBody, mediaUrls, statusCallbackUrl, enableShortlink, enableCompression, images }` | Send an MMS message with media |
@@ -467,10 +468,10 @@ Channel-generic templates under `/template` (today the only channel is `"rcs"`).
 | `list` | `{ groupId, state, channel, tag, search, sortBy, sortOrder, page, limit }` | List templates; returns `{ data, total, page, limit }` |
 | `get` | `{ templateId, groupId, version }` | Get a template head with one version |
 | `update` | `{ templateId, groupId, name, tag, body }` | Rename, retag or replace the draft body; `tag: null` clears it, omitted leaves it unchanged |
-| `publish` | `{ templateId, groupId }` | Publish the current draft; no draft returns 409 `NO_DRAFT`, a draft changed mid-publish returns 409 `DRAFT_CHANGED` (publish again), an incomplete draft returns 400 `TEMPLATE_INVALID` |
+| `publish` | `{ templateId, groupId }` | Publish the current draft; no draft returns 409 `NO_DRAFT`, a draft changed mid-publish returns 409 `DRAFT_CHANGED` (publish again), an incomplete draft returns 400 `TEMPLATE_INVALID`; a block whose text or image the Moderation API flags is an error with code `CONTENT_POLICY_FLAGGED` |
 | `archive` | `{ templateId, groupId }` | Archive a template; returns the head |
 | `versions` | `{ templateId, groupId, page, limit }` | List versions without bodies |
-| `validate` | `{ templateId, groupId, body, version }` | Validate exactly one of an unsaved `body` or a stored `version`; writes nothing |
+| `validate` | `{ templateId, groupId, body, version }` | Validate exactly one of an unsaved `body` or a stored `version` with the publish checks, `CONTENT_POLICY_FLAGGED` included; writes nothing |
 | `capabilities` | `{ groupId, channel, provider }` | Allowed blocks, actions, limits, accepted `contentFormats`, whether `geocoding` is available, and upload constraints; `provider` (`infobip`/`sinch`) adds provider limits |
 | `geocodeAddress` | `{ groupId, address }` | Resolve an address to `{ address, latitude, longitude, partialMatch }` for a `VIEW_LOCATION` suggestion; 400 `LOCATION_NOT_FOUND` when nothing matches, 429 past the group's lookup window, 503 when the server has no geocoding provider |
 | `uploadMedia` | `{ groupId, file, fileName }` | Upload a `Blob`/`File` (multipart); returns `{ mediaId, url, ... }` |
@@ -519,6 +520,7 @@ await signalHouse.templates.publish({
 | `submit` | `{ agentId }` | Submit for review; 400 `REGISTRATION_INCOMPLETE` with the errors when a requirement is missing |
 | `archive` | `{ agentId }` | Archive the agent |
 | `resendTesterInvite` | `{ agentId, phoneNumber }` | Resend a tester's expired invitation |
+| `removeTester` | `{ agentId, phoneNumber }` | Remove a tester at once, at any point before the agent is archived |
 | `uploadAsset` | `{ agentId, kind, file, fileName }` | Host a `logo` (224 × 224 px, 50 KB) or `hero` (1440 × 448 px, 200 KB) PNG/JPEG and set it on the draft |
 
 ```javascript
@@ -543,7 +545,7 @@ if (check.data.valid) await signalHouse.rcs.agents.submit({ agentId });
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `send` | `{ agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate }` | `POST /message/rcs`; send to up to 100 recipients; returns `{ requested, enqueued, failed, bulkId, messages }` |
+| `send` | `{ agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate }` | `POST /message/rcs`; send to up to 100 recipients; returns `{ requested, enqueued, failed, bulkId, messages }`, or `{ simulated: true, webhooks }` when a recipient is a simulated delivery error number |
 | `validate` | The `send` parameters | `POST /message/rcs/validate`; returns `{ valid, errors, warnings, billingClass, segments, estimatedCostMicros, unsupportedFiles, recipients }`. It runs a send's checks and holds no funds. `valid` is true only with no errors; a blocked recipient adds an error and carries `blockReason`, `reason` and `issues`, as a blocked `send` row does; writes nothing |
 | `estimate` | `{ agentId, recipients, recipientCount, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback }` | `POST /message/estimate` with `channel: "rcs"` added; price a draft in microdollars; exactly one of `recipients` or `recipientCount` |
 | `capabilities` | `{ agentId, phoneNumbers }` | `POST /rcs/capabilities`; `ENABLED`, `UNREACHABLE` or `UNKNOWN` per number |
@@ -866,7 +868,7 @@ await signalHouse.users.updateNotificationPreferences({
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `getWebhooks` | `{ id, groupId, endpointType, phoneNumber, page, limit }` | List webhooks with filters |
+| `getWebhooks` | `{ id, groupId, endpointType, phoneNumber, agentId, page, limit }` | List webhooks with filters |
 | `createWebhook` | `{ webhookData }` | Create a new webhook |
 | `updateWebhook` | `{ id, updateData }` | Update webhook configuration, including auth type and credentials |
 | `rotateWebhookSecret` | `{ id, graceSeconds }` | Rotate the signing secret (returns the new one once) |

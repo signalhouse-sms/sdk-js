@@ -1,8 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { Billing } from "../src/domains/Billing.js";
+import { existsSync, readFileSync } from "node:fs";
 import { Messages } from "../src/domains/Messages.js";
 import { Rcs, RcsAgents, RcsMessages } from "../src/domains/Rcs.js";
 import { Registrations } from "../src/domains/Registrations.js";
+import { Webhooks } from "../src/domains/Webhooks.js";
 import { SignalHouseSDK } from "../src/SignalHouseSDK.js";
 
 /** Build JSON and multipart capture clients that reuse the real SDK validation and query serializer. */
@@ -31,6 +34,13 @@ test("the SDK exposes rcs.agents with the multipart client wired in", () => {
 	assert.ok(sdk.rcs.messages instanceof RcsMessages);
 });
 
+test("getTransactionHistory forwards the category and paging", async () => {
+	const { client, calls } = captureClients();
+	await new Billing(client).getTransactionHistory({ groupId: "G1", category: "RCS_INBOUND,RCS_CARRIER_PASSTHROUGH", page: 2, limit: 1000 });
+	assert.equal(pathname(calls[0].path), "/billing/wallet/transactionHistory");
+	assert.deepEqual(params(calls[0].path), { groupId: "G1", category: "RCS_INBOUND,RCS_CARRIER_PASSTHROUGH", page: "2", limit: "1000" });
+});
+
 test("create posts the agent body with the brand link and requires brandId", async () => {
 	const { client, multipartClient, calls } = captureClients();
 	const agents = new RcsAgents(client, multipartClient);
@@ -56,15 +66,26 @@ test("get, update, validate, submit and archive address the agent", async () => 
 	await agents.update({ agentId: AGENT, campaignId: null, agent: { description: "Alerts" }, contact: { firstName: "Ada" } });
 	await agents.validate({ agentId: AGENT });
 	await agents.submit({ agentId: AGENT });
-	await agents.launch({ agentId: AGENT });
+	await agents.launch({ agentId: AGENT, acknowledgeFees: true });
 	await agents.archive({ agentId: AGENT });
 	assert.deepEqual(calls.map(({ path, request }) => [request.method, path]), [
 		["GET", `/rcs/agent/${AGENT}`], ["PUT", `/rcs/agent/${AGENT}`], ["POST", `/rcs/agent/${AGENT}/validate`],
 		["POST", `/rcs/agent/${AGENT}/submit`], ["POST", `/registration/${AGENT}/launch`], ["POST", `/rcs/agent/${AGENT}/archive`],
 	]);
 	assert.deepEqual(wire(calls[1].request.body), { campaignId: null, agent: { description: "Alerts" }, contact: { firstName: "Ada" } });
+	assert.deepEqual(wire(calls[4].request.body), { acknowledgeFees: true });
+	await agents.launch({ agentId: AGENT });
+	assert.deepEqual(wire(calls[6].request.body), {});
 	await assert.rejects(agents.submit({}), /agentId/);
 	await assert.rejects(agents.launch({}), /agentId/);
+});
+
+test("removeTester deletes the tester and needs the number", async () => {
+	const { client, multipartClient, calls } = captureClients();
+	const agents = new RcsAgents(client, multipartClient);
+	await agents.removeTester({ agentId: AGENT, phoneNumber: "+15125550199" });
+	assert.deepEqual([calls[0].request.method, calls[0].path], ["DELETE", `/rcs/agent/${AGENT}/testers/%2B15125550199`]);
+	await assert.rejects(agents.removeTester({ agentId: AGENT }), /phoneNumber/);
 });
 
 test("resendTesterInvite addresses the tester and needs the number", async () => {
@@ -90,12 +111,13 @@ test("registrations gain draft update, validate and submit, and the RCS link fil
 	await registrations.updateRegistration({ registrationId: AGENT, data: { useCase: "OTP" } });
 	await registrations.validateRegistration({ registrationId: AGENT });
 	await registrations.submitRegistration({ registrationId: AGENT });
-	await registrations.launchRegistration({ registrationId: AGENT });
+	await registrations.launchRegistration({ registrationId: AGENT, acknowledgeFees: true, acknowledgePhi: true });
 	await registrations.getRegistrations({ type: "RCS_AGENT", brandId: "BXYZ123", campaignId: "CABC123" });
 	assert.deepEqual(calls.slice(0, 4).map(({ path, request }) => [request.method, path]), [
 		["PUT", `/registration/${AGENT}`], ["POST", `/registration/${AGENT}/validate`], ["POST", `/registration/${AGENT}/submit`], ["POST", `/registration/${AGENT}/launch`],
 	]);
 	assert.deepEqual(wire(calls[0].request.body), { useCase: "OTP" });
+	assert.deepEqual(wire(calls[3].request.body), { acknowledgeFees: true, acknowledgePhi: true });
 	assert.deepEqual(params(calls[4].path), { type: "RCS_AGENT", brandId: "BXYZ123", campaignId: "CABC123" });
 	await assert.rejects(registrations.launchRegistration({}), /registrationId/);
 	await assert.rejects(registrations.updateRegistration({ registrationId: AGENT }), /data/);
@@ -135,6 +157,17 @@ test("estimate adds the rcs channel and needs only agentId", async () => {
 	await assert.rejects(messages.estimate({ recipientCount: 500 }), /agentId/);
 });
 
+test("simulateInbound posts the event and needs the agent, the tester and the type", async () => {
+	const { client, multipartClient, calls } = captureClients();
+	const messages = new RcsMessages(client, multipartClient);
+	await messages.simulateInbound({ agentId: AGENT, from: "+15125550199", type: "SUGGESTION", postbackData: "track_pkg" });
+	assert.deepEqual([calls[0].request.method, calls[0].path], ["POST", "/message/rcs/simulate-inbound"]);
+	assert.deepEqual(wire(calls[0].request.body), { agentId: AGENT, from: "+15125550199", type: "SUGGESTION", postbackData: "track_pkg" });
+	await assert.rejects(messages.simulateInbound({ from: "+15125550199", type: "TEXT" }), /agentId/);
+	await assert.rejects(messages.simulateInbound({ agentId: AGENT, type: "TEXT" }), /from/);
+	await assert.rejects(messages.simulateInbound({ agentId: AGENT, from: "+15125550199" }), /type/);
+});
+
 test("capabilities posts the numbers and needs both fields", async () => {
 	const { client, calls } = captureClients();
 	const messages = new RcsMessages(client);
@@ -160,9 +193,31 @@ test("list maps agentId, from and to, adds messageType RCS, and needs the group 
 	await messages.list({ agentId: AGENT, from: "2026-11-01", to: "2026-11-02", groupId: "G1", status: "READ", page: 2, limit: 50, templateId: "T1", templateVersion: 3, bulkId: "B1", fallbackReason: "NOT_CAPABLE", billingClass: "RICH_MEDIA", deliveredChannel: "sms", isTest: false });
 	assert.equal(calls[0].request.method, "GET");
 	assert.equal(pathname(calls[0].path), "/message");
-	assert.deepEqual(params(calls[0].path), { registrationId: AGENT, startDate: "2026-11-01", endDate: "2026-11-02", groupId: "G1", status: "READ", page: "2", limit: "50", templateId: "T1", templateVersion: "3", bulkId: "B1", fallbackReason: "NOT_CAPABLE", billingClass: "RICH_MEDIA", deliveredChannel: "sms", isTest: "false", messageType: "RCS" });
+	assert.deepEqual(params(calls[0].path), { registrationId: AGENT, startDate: "2026-11-01", endDate: "2026-11-02", groupId: "G1", status: "READ", page: "2", limit: "50", templateId: "T1", templateVersion: "3", bulkId: "B1", fallbackReason: "NOT_CAPABLE", billingClass: "RICH_MEDIA", deliveredChannel: "sms", isTest: "false", messageType: "RCS", dateBounds: "exact" });
 	await assert.rejects(messages.list({ agentId: AGENT }), /groupId/);
 	await assert.rejects(messages.list({ groupId: "G1", from: "2026-11-01" }), /to/);
+	assert.equal(calls.length, 1);
+});
+
+test("webhooks filter by agent and send the Agent endpoint's fields", async () => {
+	const { client, calls } = captureClients();
+	const webhooks = new Webhooks(client, false);
+	await webhooks.getWebhooks({ groupId: "G1", endpointType: "Agent", agentId: AGENT });
+	assert.deepEqual(params(calls[0].path), { groupId: "G1", endpointType: "Agent", agentId: AGENT });
+	const webhookData = { groupId: "G1", name: "Support", endpointType: "Agent", agentId: AGENT, url: "https://a.example/rcs", secondaryUrl: "https://b.example/rcs" };
+	await webhooks.createWebhook({ webhookData });
+	assert.deepEqual(wire(calls[1].request.body), webhookData);
+	await webhooks.updateWebhook({ id: "e1", updateData: { secondaryUrl: null } });
+	assert.deepEqual(wire(calls[2].request.body), { secondaryUrl: null });
+});
+
+test("getMessageInteractions addresses the message and needs its id", async () => {
+	const { client, multipartClient, calls } = captureClients();
+	const messages = new Messages(client, multipartClient, false);
+	await messages.getMessageInteractions({ id: "a/b" });
+	assert.equal(calls[0].path, "/message/a%2Fb/interactions");
+	assert.equal(calls[0].request.method, "GET");
+	await assert.rejects(messages.getMessageInteractions({}), /id/);
 	assert.equal(calls.length, 1);
 });
 
@@ -171,4 +226,18 @@ test("getMessages forwards the RCS filters", async () => {
 	await new Messages(client, multipartClient, false).getMessages({ groupId: "G1", startDate: "2026-11-01", endDate: "2026-11-02", templateId: "T1", templateVersion: 3, bulkId: "B1", fallbackReason: "TTL_EXPIRED", billingClass: "RICH", deliveredChannel: "sms", isTest: false });
 	assert.equal(pathname(calls[0].path), "/message");
 	assert.deepEqual(params(calls[0].path), { groupId: "G1", startDate: "2026-11-01", endDate: "2026-11-02", templateId: "T1", templateVersion: "3", bulkId: "B1", fallbackReason: "TTL_EXPIRED", billingClass: "RICH", deliveredChannel: "sms", isTest: "false" });
+});
+
+const FIXTURES = new URL("../../fixtures/rcs/requests.json", import.meta.url);
+
+test("every case in the shared corpus produces its request", { skip: existsSync(FIXTURES) ? false : "the corpus lives in the monorepo" }, async () => {
+	for (const { name, operation, input, request } of JSON.parse(readFileSync(FIXTURES, "utf8")).cases) {
+		const { client, multipartClient, calls } = captureClients();
+		const [domain, method] = operation.split(".");
+		await (domain === "agents" ? new RcsAgents(client, multipartClient) : new RcsMessages(client))[method](input);
+		assert.equal(calls[0].request.method, request.method, name);
+		assert.equal(pathname(calls[0].path), request.path, name);
+		assert.deepEqual(params(calls[0].path), request.query ?? {}, name);
+		assert.deepEqual(wire(calls[0].request.body ?? {}), request.body ?? {}, name);
+	}
 });

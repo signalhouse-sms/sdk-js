@@ -20,6 +20,20 @@ export class Messages {
 		this.client = client;
 		this.multipartClient = multipartClient;
 		this.enableAdmin = enableAdmin;
+
+		if (enableAdmin) {
+			this.admin = {
+				/**
+				 * Read RCS webhook health: how late provider reports reach Signal House, and which tenants' webhooks are failing (signalhouse only)
+				 * @async
+				 * @roles signalhouse
+				 * @param {Object} [params] - The parameters for the read
+				 * @param {RequestOptions} [params.options] - Additional options for the request
+				 * @returns {Promise<SdkResponse<{ windowMinutes: number, lag: { reports: number, p50Seconds: number|null, p95Seconds: number|null, maxSeconds: number|null }, tenantFailures: Array<{ groupId: string, failures: number, alerted: boolean }> }>>} A promise that resolves to the view
+				 */
+				getRcsWebhookHealth: async ({ options = {} } = {}) => this.client("/message/rcs/webhook-health", { method: "GET", ...options }),
+			};
+		}
 	}
 
 	/**
@@ -128,11 +142,26 @@ export class Messages {
 	 * @param {string} params.id - The message ID
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @throws {Error} Throws an error if the id parameter is missing
-	 * @returns {Promise<SdkResponse<any>>} - A promise that resolves to the message; an unknown ID is a 404
+	 * @returns {Promise<SdkResponse<any>>} - A promise that resolves to the message; an unknown ID is a 404. An RCS message and its fallback leg also carry `costBreakdown`: `{ legs: [{ messageId, channel, billed, billingClass, segments, baseMicros, carrierMicros, rated }] }`, null when it cannot be computed
 	 */
 	async getMessage({ id, options = {} }) {
 		this.client._require({ id });
 		return this.client(`/message/${encodeURIComponent(id)}`, { method: "GET", ...options });
+	}
+
+	/**
+	 * Get the taps on one RCS message, oldest first
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The parameters for getting the taps
+	 * @param {string} params.id - The message ID
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @throws {Error} Throws an error if the id parameter is missing
+	 * @returns {Promise<SdkResponse<any>>} - A promise that resolves to `{ results: [{ actionType, buttonId, label, postbackData, occurredAt, ratedCostMicros }] }`; an unknown ID is a 404
+	 */
+	async getMessageInteractions({ id, options = {} }) {
+		this.client._require({ id });
+		return this.client(`/message/${encodeURIComponent(id)}/interactions`, { method: "GET", ...options });
 	}
 
 	/**

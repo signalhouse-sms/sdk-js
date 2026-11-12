@@ -308,6 +308,7 @@ export class Templates {
 
 	/**
 	 * Publish a template's current draft; no draft returns 409 NO_DRAFT, a draft changed mid-publish returns 409 DRAFT_CHANGED (publish again) and an incomplete draft returns 400 TEMPLATE_INVALID
+	 * A block whose text or image the Moderation API flags is an error with code CONTENT_POLICY_FLAGGED, whose message names the category ("Content moderation flagged this text: spam"). The check passes when the Moderation API fails.
 	 * @async
 	 * @roles api, admin, developer
 	 * @param {Object} params - The parameters for publishing a template
@@ -367,6 +368,7 @@ export class Templates {
 
 	/**
 	 * Validate an unsaved body or a stored version without writing anything
+	 * Validate runs the publish checks, the content policy check included: a block whose text or image the Moderation API flags is an error with code CONTENT_POLICY_FLAGGED. Saving a draft does not run that check.
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The parameters for validation; pass exactly one of body or version

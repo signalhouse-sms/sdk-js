@@ -24,7 +24,25 @@ test("the SDK exposes registrations in place of senderRegistrations", () => {
 	const sdk = new SignalHouseSDK({ apiKey: "test", baseUrl: "https://example.invalid", enableAdmin: true });
 	assert.ok(sdk.registrations instanceof Registrations);
 	assert.equal("senderRegistrations" in sdk, false);
-	assert.deepEqual(Object.keys(sdk.registrations.admin), ["reviewRegistration", "correctRegistration", "addNumber", "reconcile", "getApplication"]);
+	assert.deepEqual(Object.keys(sdk.registrations.admin), ["reviewRegistration", "correctRegistration", "addNumber", "reconcile", "getApplication", "assignRegistration", "nudgeRegistration"]);
+});
+
+test("the staff review queue methods need enableAdmin and reach their routes", async () => {
+	assert.equal(new Registrations(captureClient().client).admin, undefined);
+	assert.equal(new Messages(captureClient().client).admin, undefined);
+	const { client, calls } = captureClient();
+	const domain = new Registrations(client, true);
+	await domain.admin.assignRegistration({ registrationId: "RCSA7K2M1QZ8RP", userId: "507f1f77bcf86cd799439011" });
+	await domain.admin.assignRegistration({ registrationId: "RCSA7K2M1QZ8RP", userId: null });
+	await domain.admin.nudgeRegistration({ registrationId: "RCSA7K2M1QZ8RP" });
+	await new Messages(client, null, true).admin.getRcsWebhookHealth();
+	assert.deepEqual(calls.map(({ path, request }) => [request.method, path, request.body]), [
+		["PUT", "/registration/RCSA7K2M1QZ8RP/assignee", { userId: "507f1f77bcf86cd799439011" }],
+		["PUT", "/registration/RCSA7K2M1QZ8RP/assignee", { userId: null }],
+		["POST", "/registration/RCSA7K2M1QZ8RP/nudge", undefined],
+		["GET", "/message/rcs/webhook-health", undefined],
+	]);
+	await assert.rejects(domain.admin.assignRegistration({ registrationId: "RCSA7K2M1QZ8RP" }), /userId/);
 });
 
 test("catalog requires a region and forwards it as a query parameter", async () => {
@@ -136,6 +154,10 @@ test("review sends the decision and optional reason without a version field", as
 	await domain.admin.reviewRegistration({ registrationId: "REG1", action: "APPROVE" });
 	assert.deepEqual(calls[1].request.body, { action: "APPROVE", reason: undefined });
 	assert.equal("version" in calls[1].request.body, false);
+	calls.length = 0;
+	const rejectionReasons = [{ field: "consent.optInDetails", code: "OPT_IN_SCOPE", reason: "Promotions are not covered" }];
+	await domain.admin.reviewRegistration({ registrationId: "RCSA1", action: "REJECT", reason: "Consent is too narrow", reasonCode: "OPT_IN_SCOPE", rejectionReasons });
+	assert.deepEqual(calls[0].request.body, { action: "REJECT", reason: "Consent is too narrow", reasonCode: "OPT_IN_SCOPE", rejectionReasons });
 	await assert.rejects(domain.admin.reviewRegistration({ registrationId: "REG1" }), /action/);
 	await assert.rejects(domain.admin.reviewRegistration({ action: "APPROVE" }), /registrationId/);
 });

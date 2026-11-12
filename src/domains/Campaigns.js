@@ -425,7 +425,7 @@ export class Campaigns {
    * @param {string} params.campaignId - Campaign identifier
    * @param {RequestOptions} [params.options] - Additional request options
    * @throws {Error} Throws an error if the campaignId parameter is missing
-   * @returns {Promise<SdkResponse<any>>} A promise that resolves to `{ campaignId, brandId, usecase, brand: { status, brandScore, entityType }, att: { tier, scope, unit, sms: { limit }, mms: { limit }, marginPercent, nextTier }, tmobile: { tier, scope, unit, dailyLimit, thresholds, nextTier, usedToday: { date, segments, resetsAt } | null } }`. A null tier/limit means the carrier ladder does not apply (unverified brand, GOVERNMENT entity, PUBLIC_SAFETY_RESTRICTED usecase); a null nextTier means the top rung or a usecase-capped (LOW_VOLUME) campaign.
+   * @returns {Promise<SdkResponse<any>>} A promise that resolves to `{ campaignId, brandId, usecase, brand: { status, brandScore, entityType }, att: { tier, scope, unit, sms: { limit }, mms: { limit }, marginPercent, nextTier }, tmobile: { tier, scope, unit, dailyLimit, thresholds, nextTier, usedToday: { date, segments, resetsAt } | null, sharedWith: [{ brandId, brandName }] } }`. A null tier/limit means the carrier ladder does not apply (unverified brand, GOVERNMENT entity, PUBLIC_SAFETY_RESTRICTED usecase); a null nextTier means the top rung or a usecase-capped (LOW_VOLUME) campaign. T-Mobile's counter is keyed per brand EIN, not per brand: sharedWith lists other verified brands in the same group that share this EIN and also carry a T-Mobile limit, since usedToday is their combined total.
    */
   async getCampaignThroughputLimits({ campaignId, options = {} }) {
     this.client._require({ campaignId });
@@ -441,7 +441,7 @@ export class Campaigns {
    * @param {string} params.groupId - Group identifier
    * @param {RequestOptions} [params.options] - Additional request options
    * @throws {Error} Throws an error if the groupId parameter is missing
-   * @returns {Promise<SdkResponse<any>>} A promise that resolves to `[{ campaignId, brandId, brandName, usecase, tmobile: { tier, dailyLimit, usedToday: { date, segments, resetsAt } } }]`. Campaigns without a T-Mobile limit (unverified brand, GOVERNMENT entity, PUBLIC_SAFETY_RESTRICTED usecase) are left out. The counter is per brand EIN and UTC day, so every campaign of a brand shows the same usage; a LOW_VOLUME campaign's limit is 2,000 whatever the brand's score.
+   * @returns {Promise<SdkResponse<any>>} A promise that resolves to `[{ campaignId, brandId, brandName, usecase, tmobile: { tier, dailyLimit, usedToday: { date, segments, resetsAt }, sharedWith: [{ brandId, brandName }] } }]`. Campaigns without a T-Mobile limit (unverified brand, GOVERNMENT entity, PUBLIC_SAFETY_RESTRICTED usecase) are left out. The counter is per brand EIN and UTC day, so every campaign of a brand shows the same usage; a LOW_VOLUME campaign's limit is 2,000 whatever the brand's score. sharedWith lists this brand's other group brands on the same EIN that also carry a T-Mobile limit, since usedToday is their combined total.
    */
   async getGroupThroughputUsage({ groupId, options = {} }) {
     this.client._require({ groupId });
