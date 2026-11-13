@@ -159,6 +159,63 @@ export class Registrations {
 						...options,
 					});
 				},
+
+				/**
+				 * Mark an RCS agent's requested carrier update as sent, once staff emailed it to the carrier partner (signalhouse only)
+				 * @async
+				 * @roles signalhouse
+				 * @param {Object} params - The parameters for the update
+				 * @param {string} params.registrationId - The agent's registration ID (e.g. RCSA7K2M1QZ8RP)
+				 * @param {RequestOptions} [params.options] - Additional options for the request
+				 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the registration, as staff read it; 409 when no update is REQUESTED
+				 */
+				markCarrierUpdateSent: async ({ registrationId, options = {} }) => {
+					this.client._require({ registrationId });
+					const safeId = encodeURIComponent(registrationId);
+					return this.client(`/registration/${safeId}/carrier-update`, {
+						method: "PUT",
+						body: { status: "SENT" },
+						...options,
+					});
+				},
+
+				/**
+				 * Add an internal comment to a registration of any type; comments are append-only and never reach the customer (signalhouse only)
+				 * @async
+				 * @roles signalhouse
+				 * @param {Object} params - The parameters for the comment
+				 * @param {string} params.registrationId - The registration ID (e.g. RCSA7K2M1QZ8RP)
+				 * @param {string} params.comment - The comment, 1 to 2,000 characters
+				 * @param {RequestOptions} [params.options] - Additional options for the request
+				 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { comment, createdAt, createdBy, createdByRole }
+				 */
+				addComment: async ({ registrationId, comment, options = {} }) => {
+					this.client._require({ registrationId, comment });
+					const safeId = encodeURIComponent(registrationId);
+					return this.client(`/registration/${safeId}/comments`, {
+						method: "POST",
+						body: { comment },
+						...options,
+					});
+				},
+
+				/**
+				 * List a registration's internal comments, newest first (signalhouse only)
+				 * @async
+				 * @roles signalhouse
+				 * @param {Object} params - The parameters for the read
+				 * @param {string} params.registrationId - The registration ID (e.g. RCSA7K2M1QZ8RP)
+				 * @param {RequestOptions} [params.options] - Additional options for the request
+				 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { comments: [{ comment, createdAt, createdBy, createdByRole }] }
+				 */
+				getComments: async ({ registrationId, options = {} }) => {
+					this.client._require({ registrationId });
+					const safeId = encodeURIComponent(registrationId);
+					return this.client(`/registration/${safeId}/comments`, {
+						method: "GET",
+						...options,
+					});
+				},
 			};
 		}
 	}
@@ -278,7 +335,8 @@ export class Registrations {
 	 * Submit a draft. A type Signal House reviews goes to SIGNAL_HOUSE_REVIEW; a type it does not (RCS_AGENT) goes to
 	 * SUBMITTING and is filed with the provider at once. A draft that fails a requirement gets a 400 whose details carry
 	 * { code: "REGISTRATION_INCOMPLETE", errors, warnings }; a second submit, or one of a registration the provider
-	 * already holds, gets a 409.
+	 * already holds, gets a 409. An RCS agent whose group has not finished account verification gets a 403 with code
+	 * GROUP_UNVERIFIED, and one whose group is rejected a 403 with code GROUP_REJECTED.
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The parameters for the submission
@@ -297,7 +355,9 @@ export class Registrations {
 	 * are checked and the registration goes to SIGNAL_HOUSE_REVIEW, whose approval files the provider's launch request.
 	 * Allowed while the provider reports the agent ready for testing, after a Signal House rejection, or after every
 	 * carrier refused an earlier launch (409 otherwise); a failed requirement is a 400 whose details carry
-	 * { code: "REGISTRATION_INCOMPLETE", errors, warnings }.
+	 * { code: "REGISTRATION_INCOMPLETE", errors, warnings }; an RCS agent's copy-rule error carries the carrier partner's key
+	 * as its `code` (for example OPT_IN_MSG_RATE_DISCL_MISSING). An RCS agent whose group has not finished account
+	 * verification gets a 403 with code GROUP_UNVERIFIED, and one whose group is rejected a 403 with code GROUP_REJECTED.
 	 * An RCS agent's launch request charges its launch fees: a wallet that cannot cover them gets a 402, and nothing changes. When any fee is due the request must set acknowledgeFees: true, or it gets a 400 with code FEE_ACKNOWLEDGEMENT_REQUIRED and nothing is held; a launch with nothing due needs no acknowledgement.
 	 * When the agent's brand vertical is healthcare or insurance, the launch needs the protected health information (PHI) disclosure acknowledged: send acknowledgePhi: true, or the request gets a 400 REGISTRATION_INCOMPLETE whose errors name consent.phiAcknowledgement. The API records the acknowledgement as consent.phiAcknowledgement { acknowledgedAt, acknowledgedBy } from the caller; the client sends only the boolean, and an agent update cannot set it. Once recorded, a later launch request needs no new acknowledgement.
 	 * @async

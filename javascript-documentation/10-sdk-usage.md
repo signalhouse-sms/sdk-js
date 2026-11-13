@@ -96,6 +96,7 @@ The SDK organizes API endpoints into domain namespaces:
 | `signalHouse.rcs.agents` | RCS agents linked to a brand and campaign: drafts, validate, submit, images |
 | `signalHouse.rcs.messages` | RCS messages: send, validate, estimate, capability check, read |
 | `signalHouse.users` | User management, service users |
+| `signalHouse.verify` | Carrier phone-number checks: SIM Swap and Number Verify |
 | `signalHouse.webhooks` | Webhook registration and management |
 
 ---
@@ -691,6 +692,39 @@ const shortlink = await signalHouse.shortlinks.getShortlink({
 const redirect = await signalHouse.shortlinks.getShortlinkRedirect({
   shortlinkId: "sl_abc123",
 });
+```
+
+---
+
+### Verify
+
+Carrier phone-number checks under `/verify`. Every check the carrier answers is billed to the group's wallet (`cost`, in microdollars); 402 on insufficient funds. A check the carrier cannot run for the number returns 422 and is not charged. Phone numbers are in international format (e.g. `"+12025550123"`).
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `checkSimSwap` | `{ phoneNumber, maxAge, includeSwapDate }` | `POST /verify/sim-swap`; whether the number's SIM changed within `maxAge` hours (1-2400); `includeSwapDate` adds `latestSimChange` (no extra charge). Returns `{ checkId, phoneNumber, swapped, maxAge, latestSimChange?, cost }` |
+| `startNumberVerification` | `{ phoneNumber, devicePhoneNumber, redirectUrl }` | `POST /verify/number`; returns `{ checkId, phoneNumber, status: "PENDING", authorizationUrl, expiresAt }`. The end user's phone must open `authorizationUrl` on mobile data (Wi-Fi off) within 10 minutes; `redirectUrl` (https) then receives `?checkId=…` |
+| `getNumberVerification` | `{ checkId }` | `GET /verify/number/:checkId`; returns `{ checkId, phoneNumber, status, devicePhoneNumberVerified, failureReason, createdAt, expiresAt, completedAt, cost }`. `status` is `PENDING`, `VERIFIED`, `NOT_VERIFIED`, `FAILED` or `EXPIRED`; `failureReason` is `NOT_COMPLETED`, `NOT_APPLICABLE`, `PROVIDER_ERROR` or `null`. Only `VERIFIED` and `NOT_VERIFIED` are billed |
+
+```javascript
+// SIM Swap: did this number's SIM change in the last 72 hours?
+const simSwap = await signalHouse.verify.checkSimSwap({
+  phoneNumber: "+12025550123",
+  maxAge: 72,
+});
+if (simSwap.success && simSwap.data.swapped) {
+  // step up authentication
+}
+
+// Number Verify: send the end user's phone to authorizationUrl (on mobile data), then read the result
+const started = await signalHouse.verify.startNumberVerification({
+  phoneNumber: "+12025550123",
+  redirectUrl: "https://example.com/verified",
+});
+const { checkId, authorizationUrl } = started.data;
+
+const result = await signalHouse.verify.getNumberVerification({ checkId });
+console.log(result.data.status); // "VERIFIED" | "NOT_VERIFIED" | ...
 ```
 
 ---

@@ -48,6 +48,16 @@
  */
 
 /**
+ * Where one prefilled field's value came from. The agent's `autofill` holds one per field, keyed by its path
+ * (`consent.optInDetails`); the API marks a field `edited` once its value changes.
+ * @typedef {Object} RcsAgentAutofillMarker
+ * @property {("brand"|"campaign"|"landing")} source - The record the value came from
+ * @property {string|null} [sourceId] - That record's id (brand ID, campaign ID or landing page ID)
+ * @property {string} [at] - When the field was filled (ISO 8601; default now)
+ * @property {boolean} [edited] - Whether the value changed since (default false)
+ */
+
+/**
  * One recipient of an RCS send.
  * @typedef {Object} RcsRecipient
  * @property {string} phoneNumber - The number, 10-15 digits, with or without the +
@@ -111,14 +121,15 @@ export class RcsAgents {
 	 * @param {{ mode?: string, channel?: string, from?: string }|null} [params.defaultFallback] - Fallback mode (auto, rcs_only, sms_only, none), channel (auto, sms, mms) and from, a number on the linked campaign
 	 * @param {string[]} [params.excludedCarriers] - [] or ["T_MOBILE"] (the carrier partner's carrier name)
 	 * @param {string[]} [params.testers] - Tester numbers (up to 200), invited once the agent exists at the carrier
+	 * @param {Object<string, RcsAgentAutofillMarker>} [params.autofill] - Where the fields you prefilled came from, by path (`consent.optInDetails`); the API adds its own for what it fills
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the agent (status DRAFT)
 	 */
-	async create({ brandId, campaignId, agent, consent, contact, useCase, billingCategory, defaultFallback, excludedCarriers, testers, options = {} }) {
+	async create({ brandId, campaignId, agent, consent, contact, useCase, billingCategory, defaultFallback, excludedCarriers, testers, autofill, options = {} }) {
 		this.client._require({ brandId });
 		return this.client("/rcs/agent", {
 			method: "POST",
-			body: { brandId, campaignId, agent, consent, contact, useCase, billingCategory, defaultFallback, excludedCarriers, testers },
+			body: { brandId, campaignId, agent, consent, contact, useCase, billingCategory, defaultFallback, excludedCarriers, testers, autofill },
 			...options,
 		});
 	}
@@ -150,7 +161,7 @@ export class RcsAgents {
 	 * @param {Object} params - The lookup
 	 * @param {string} params.agentId - The agent ID (e.g. RCSA7K2M1QZ8RP)
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the agent
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the agent; googleAgentId is Google's id for it, null until Google has created the agent
 	 */
 	async get({ agentId, options = {} }) {
 		this.client._require({ agentId });
@@ -159,9 +170,11 @@ export class RcsAgents {
 
 	/**
 	 * Edit an agent while it may change: a draft, a Signal House rejection, a request for changes, or an agent in
-	 * testing (the change is pushed to the carrier partner). `agent`, `consent` and `contact` merge field by field;
-	 * every other key replaces; campaignId: null unlinks the campaign. 409 in any other status; brandId is locked once
-	 * the agent exists at the partner and billingCategory once a launch was requested.
+	 * testing (the change is pushed to the carrier partner). After a carrier rejected a launch other carriers took
+	 * (PARTIALLY_LAUNCHED with a REJECTED carrier), only `consent` and `contact` may change, and nothing is pushed: send
+	 * them with requestCarrierUpdate. `agent`, `consent` and `contact` merge field by field; every other key replaces;
+	 * campaignId: null unlinks the campaign. 409 in any other status; brandId is locked once the agent exists at the
+	 * partner and billingCategory once a launch was requested.
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The edit
@@ -176,14 +189,15 @@ export class RcsAgents {
 	 * @param {Object|null} [params.defaultFallback] - The fallback
 	 * @param {string[]} [params.excludedCarriers] - [] or ["T_MOBILE"] (the carrier partner's carrier name)
 	 * @param {string[]} [params.testers] - Tester numbers
+	 * @param {Object<string, RcsAgentAutofillMarker>} [params.autofill] - Replaces the prefill markers; omitted, the stored ones are kept and a changed field's marker turns edited
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the agent
 	 */
-	async update({ agentId, brandId, campaignId, agent, consent, contact, useCase, billingCategory, defaultFallback, excludedCarriers, testers, options = {} }) {
+	async update({ agentId, brandId, campaignId, agent, consent, contact, useCase, billingCategory, defaultFallback, excludedCarriers, testers, autofill, options = {} }) {
 		this.client._require({ agentId });
 		return this.client(`/rcs/agent/${encodeURIComponent(agentId)}`, {
 			method: "PUT",
-			body: { brandId, campaignId, agent, consent, contact, useCase, billingCategory, defaultFallback, excludedCarriers, testers },
+			body: { brandId, campaignId, agent, consent, contact, useCase, billingCategory, defaultFallback, excludedCarriers, testers, autofill },
 			...options,
 		});
 	}
@@ -192,6 +206,8 @@ export class RcsAgents {
 	 * Check an agent against the next gate on its path without writing: before it exists at the carrier partner, what
 	 * creating it needs (the full profile, useCase, a billingCategory); after that, what the launch request needs
 	 * (a VERIFIED brand, the campaign, the full consent with the video, the contact)
+	 * The launch gate also runs the carriers' copy rules; each error carries the carrier partner's key as `code`, for
+	 * example OPT_IN_MSG_RATE_DISCL_MISSING.
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The lookup
@@ -208,6 +224,8 @@ export class RcsAgents {
 	 * Submit a draft: create the agent at the carrier partner, with no review first. It needs the full profile, a
 	 * useCase and a billingCategory; otherwise a 400 whose details carry { code: "REGISTRATION_INCOMPLETE",
 	 * errors, warnings }. The agent moves to AGENT_CREATING, then IN_TESTING once the partner reports it ready.
+	 * A group that has not finished account verification gets a 403 with code GROUP_UNVERIFIED, and a rejected one a 403
+	 * with code GROUP_REJECTED; a pending verification passes.
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The submission
@@ -224,7 +242,9 @@ export class RcsAgents {
 	 * Request the agent's launch: the launch requirements are checked and the agent goes to Signal House review (status
 	 * PENDING_REVIEW), whose approval files the launch with the carrier partner. Allowed from IN_TESTING, REJECTED and
 	 * CARRIER_REJECTED (409 otherwise); a failed requirement is a 400 whose details carry { code:
-	 * "REGISTRATION_INCOMPLETE", errors, warnings }. Sends POST /registration/:agentId/launch: the agent is a registration.
+	 * "REGISTRATION_INCOMPLETE", errors, warnings }, and a copy-rule error carries the carrier partner's key as its `code`
+	 * (for example OPT_IN_MSG_RATE_DISCL_MISSING). A group that has not finished account verification gets a 403 with code
+	 * GROUP_UNVERIFIED, and a rejected one a 403 with code GROUP_REJECTED. Sends POST /registration/:agentId/launch: the agent is a registration.
 	 * The request charges the agent's launch fees: a wallet that cannot cover them gets a 402, and the agent stays where it is. When any fee is due the request must set acknowledgeFees: true, or it gets a 400 with code FEE_ACKNOWLEDGEMENT_REQUIRED and nothing is held; a launch with nothing due needs no acknowledgement. The agent's launchFees quotes what the next request charges.
 	 * When the agent's brand vertical is healthcare or insurance, the launch needs the protected health information (PHI) disclosure acknowledged: send acknowledgePhi: true, or the request gets a 400 REGISTRATION_INCOMPLETE whose errors name consent.phiAcknowledgement. The API records the acknowledgement as consent.phiAcknowledgement { acknowledgedAt, acknowledgedBy } from the caller; the client sends only the boolean, and an agent update cannot set it. Once recorded, a later launch request needs no new acknowledgement.
 	 * @async
@@ -242,6 +262,24 @@ export class RcsAgents {
 	}
 
 	/**
+	 * Send Signal House the corrected launch answers after a carrier rejected a launch other carriers took. The carrier
+	 * partner takes no change through its API once a carrier launched, so Signal House emails it the update; edit
+	 * `consent` and `contact` first. The agent's carrierUpdate reads REQUESTED for the rejected carriers, then SENT once
+	 * Signal House sent it. 409 when no carrier is REJECTED after a partial launch, or an update already waits.
+	 * Sends POST /registration/:agentId/carrier-update: the agent is a registration.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The request
+	 * @param {string} params.agentId - The agent ID
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the agent's registration, with data.carrierUpdate
+	 */
+	async requestCarrierUpdate({ agentId, options = {} }) {
+		this.client._require({ agentId });
+		return this.client(`/registration/${encodeURIComponent(agentId)}/carrier-update`, { method: "POST", ...options });
+	}
+
+	/**
 	 * Archive an agent. One the carrier partner created stops sending at once and stays ARCHIVE_PENDING until Signal House confirms the partner cancelled it, then ARCHIVED. Archiving cannot be undone; an agent already ARCHIVE_PENDING answers 409.
 	 * @async
 	 * @roles api, admin, developer, user
@@ -253,6 +291,24 @@ export class RcsAgents {
 	async archive({ agentId, options = {} }) {
 		this.client._require({ agentId });
 		return this.client(`/rcs/agent/${encodeURIComponent(agentId)}/archive`, { method: "POST", ...options });
+	}
+
+	/**
+	 * Make the links that start a chat with the agent: an sms: deep link in Google's format, and a short link that redirects to it,
+	 * to print as a QR code. With the agent's defaultFallback.from, the deep link names that number, so a handset that cannot reach
+	 * the agent texts it instead. The same request returns the same short link. The links work for approved testers until a carrier
+	 * launches the agent; before Google has created the agent the request answers 409 with code GOOGLE_AGENT_PENDING.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The request
+	 * @param {string} params.agentId - The agent ID
+	 * @param {string} [params.body] - The message the chat opens with, prefilled on the handset (max 1,000 characters)
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { googleAgentId, deepLink, shortLink }
+	 */
+	async createEntryPoints({ agentId, body, options = {} }) {
+		this.client._require({ agentId });
+		return this.client(`/rcs/agent/${encodeURIComponent(agentId)}/entry-points`, { method: "POST", body: { body }, ...options });
 	}
 
 	/**
@@ -350,6 +406,42 @@ export class RcsMessages {
 	async send({ agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate, options = {} }) {
 		this.client._require({ agentId, recipients });
 		return this.client("/message/rcs", {
+			method: "POST",
+			body: { agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate },
+			...options,
+		});
+	}
+
+	/**
+	 * Send an RCS message to up to 10,000 recipients in the background. The request runs the send's request checks, splits the
+	 * recipients into chunks of 100, queues each chunk and answers 202. Every message carries the shared bulkId; track progress with
+	 * the messages list filtered by bulkId (GET /message?bulkId=) and per-message webhooks. A chunk the wallet cannot cover, or that is
+	 * refused after acceptance, gets BLOCKED messages with blockReason INSUFFICIENT_FUNDS or SEND_REFUSED; a chunk that keeps failing
+	 * gets SEND_FAILED. Pass options.idempotencyKey to make a retry safe (same bulkId, no duplicate sends); a retry without one may
+	 * send duplicates.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The send; the same fields as send
+	 * @param {string} params.agentId - The agent that sends (RCSA…)
+	 * @param {RcsRecipient[]} params.recipients - Up to 10,000 recipients
+	 * @param {string} [params.templateId] - A template to send; exactly one of templateId or content
+	 * @param {number} [params.templateVersion] - A published version of templateId; needs templateId. Pinned when the batch is accepted
+	 * @param {Object} [params.content] - Inline content; exactly one of templateId or content
+	 * @param {string} [params.contentFormat] - content.v1 (default) or google.rcs
+	 * @param {("AUTHENTICATION"|"TRANSACTION"|"SERVICEREQUEST"|"ACKNOWLEDGEMENT"|"PROMOTION")} [params.trafficType] - Required on a MULTI_USE agent when the template sets none
+	 * @param {number} [params.ttlSeconds] - Seconds each RCS message may wait for delivery, from when its chunk is sent; at most one of ttlSeconds or expireTime
+	 * @param {string} [params.expireTime] - ISO-8601 time the RCS messages expire
+	 * @param {RcsMessageFallback} [params.fallback] - The fallback for this send
+	 * @param {string} [params.statusCallbackUrl] - URL that receives each message's events
+	 * @param {boolean} [params.enableShortlink] - Shorten the links in the message
+	 * @param {boolean} [params.isTest] - Send as a test; approved testers only
+	 * @param {("not_capable"|"ttl_expired"|"delivered"|"read")} [params.simulate] - Simulate this outcome; approved testers only
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { bulkId, status: "ACCEPTED", recipientCount } (202). Every message of the batch carries bulkId. A recipient from 19999990000 to 19999990359 makes the whole request a simulation, as on send
+	 */
+	async sendBatch({ agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate, options = {} }) {
+		this.client._require({ agentId, recipients });
+		return this.client("/message/rcs/batch", {
 			method: "POST",
 			body: { agentId, recipients, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, statusCallbackUrl, enableShortlink, isTest, simulate },
 			...options,
@@ -460,7 +552,7 @@ export class RcsMessages {
 	 * @param {Object} params - The lookup
 	 * @param {string} params.messageId - The message ID
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the message; an unknown ID is a 404
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the message; an unknown ID is a 404. A settled RCS message carries carrierFeeMicros, the carrier pass-through and media surcharge it was charged
 	 */
 	async get({ messageId, options = {} }) {
 		this.client._require({ messageId });
@@ -488,7 +580,7 @@ export class RcsMessages {
 	 * @param {string} [params.deliveredChannel] - Filter by the channel that delivered the message (rcs, sms, mms)
 	 * @param {boolean} [params.isTest] - true for test messages only, false to leave them out
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the list of messages
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the list of messages; a settled RCS message carries carrierFeeMicros
 	 */
 	async list({ groupId, from, to, agentId, status, page, limit, templateId, templateVersion, bulkId, fallbackReason, billingClass, deliveredChannel, isTest, options = {} }) {
 		this.client._require({ groupId, from, to });

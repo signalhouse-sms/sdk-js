@@ -80,6 +80,18 @@ test("get, update, validate, submit and archive address the agent", async () => 
 	await assert.rejects(agents.launch({}), /agentId/);
 });
 
+test("requestCarrierUpdate posts to the agent's registration with no body, and update forwards the prefill markers", async () => {
+	const { client, multipartClient, calls } = captureClients();
+	const agents = new RcsAgents(client, multipartClient);
+	await agents.requestCarrierUpdate({ agentId: AGENT });
+	assert.deepEqual([calls[0].request.method, calls[0].path], ["POST", `/registration/${AGENT}/carrier-update`]);
+	assert.equal(calls[0].request.body, undefined);
+	const autofill = { "consent.optInDetails": { source: "campaign", sourceId: "CABC123", at: "2026-12-01T15:04:05.000Z", edited: true } };
+	await agents.update({ agentId: AGENT, consent: { optInDetails: "Tick the box" }, autofill });
+	assert.deepEqual(wire(calls[1].request.body), { consent: { optInDetails: "Tick the box" }, autofill });
+	await assert.rejects(agents.requestCarrierUpdate({}), /agentId/);
+});
+
 test("removeTester deletes the tester and needs the number", async () => {
 	const { client, multipartClient, calls } = captureClients();
 	const agents = new RcsAgents(client, multipartClient);

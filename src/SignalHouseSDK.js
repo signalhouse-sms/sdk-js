@@ -47,6 +47,8 @@ import { Notifications } from "./domains/Notifications.js";
 import { Webhooks } from "./domains/Webhooks.js";
 import { Voice } from "./domains/Voice.js";
 import { Agents } from "./domains/Agents.js";
+import { Audit } from "./domains/Audit.js";
+import { Verify } from "./domains/Verify.js";
 
 export class SignalHouseSDK {
 	/**
@@ -98,6 +100,9 @@ export class SignalHouseSDK {
 		this.voice = new Voice(client, this.enableAdmin);
 		// AI Agents domain — customer-facing agent config under /agent.
 		this.agents = new Agents(client, this.enableAdmin);
+		this.audit = new Audit(client, this.enableAdmin);
+		// Carrier phone-number checks (SIM Swap, Number Verify) under /verify.
+		this.verify = new Verify(client, this.enableAdmin);
 	}
 
 	/**

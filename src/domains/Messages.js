@@ -142,7 +142,7 @@ export class Messages {
 	 * @param {string} params.id - The message ID
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @throws {Error} Throws an error if the id parameter is missing
-	 * @returns {Promise<SdkResponse<any>>} - A promise that resolves to the message; an unknown ID is a 404. An RCS message and its fallback leg also carry `costBreakdown`: `{ legs: [{ messageId, channel, billed, billingClass, segments, baseMicros, carrierMicros, rated }] }`, null when it cannot be computed
+	 * @returns {Promise<SdkResponse<any>>} - A promise that resolves to the message; an unknown ID is a 404. An RCS message and its fallback leg also carry `costBreakdown`: `{ legs: [{ messageId, channel, billed, billingClass, segments, baseMicros, carrierMicros, rated }] }`, null when it cannot be computed. A settled RCS message also carries `carrierFeeMicros`: the carrier pass-through and media surcharge it was charged
 	 */
 	async getMessage({ id, options = {} }) {
 		this.client._require({ id });
@@ -425,6 +425,28 @@ export class Messages {
 		const filters = { groupId, subgroupId, brandId, campaignId, registrationId, phoneNumber, carrier, startDate, endDate, page, limit, sortField, sortOrder, channel, region, regionScopes, dateBounds };
 		const queryString = this.client._getQueryString(withRegionScopes(filters));
 		return this.client(`/message/dnc${queryString}`, { method: "GET", ...options });
+	}
+
+	/**
+	 * Export the group's consent ledger, newest first: one append-only record per opt-out or opt-in a recipient gave (a STOP
+	 * or START keyword, or the confirmation of an opt-out link). It records only; sends do not read it.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The parameters for exporting consent records
+	 * @param {string} params.groupId - The group whose records to read
+	 * @param {string} [params.recipientPhoneNumber] - One handset, in any spelling; matched on its digits
+	 * @param {string} [params.startDate] - Earliest occurredAt, ISO-8601; a bare date is its whole UTC day, a timestamp is bound as sent
+	 * @param {string} [params.endDate] - Latest occurredAt, ISO-8601; a bare date is its whole UTC day, a timestamp is bound as sent
+	 * @param {number} [params.page] - Page number (default 1)
+	 * @param {number} [params.limit] - Records per page (default 100, max 500)
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - `{ data, total, page, limit }`. Each record carries groupId, subgroupId, recipientPhoneNumber (the handset),
+	 *   phoneNumber (the business number or RCS agent id that received it), scope `{ type: CAMPAIGN|AGENT|SUBGROUP, id }`,
+	 *   clearedScopes (for OPT_IN, every `{ type, id }` the START cleared; empty for OPT_OUT), action (OPT_OUT or OPT_IN), source (KEYWORD or LINK), keyword, messageType (SMS, MMS or RCS), messageId, actor `{ type: "RECIPIENT" }`, occurredAt and createdAt.
+	 */
+	async getConsentRecords({ groupId, recipientPhoneNumber, startDate, endDate, page, limit, options = {} }) {
+		const queryString = this.client._getQueryString({ groupId, recipientPhoneNumber, startDate, endDate, page, limit });
+		return this.client(`/message/dnc/consent-records${queryString}`, { method: "GET", ...options });
 	}
 
 	/**

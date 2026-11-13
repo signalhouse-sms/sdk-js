@@ -5,6 +5,7 @@ import { Messages } from "../src/domains/Messages.js";
 import { Numbers } from "../src/domains/Numbers.js";
 import { Brands } from "../src/domains/Brands.js";
 import { Onboarding } from "../src/domains/Onboarding.js";
+import { Audit } from "../src/domains/Audit.js";
 import { SignalHouseSDK } from "../src/SignalHouseSDK.js";
 
 /** Build a request-capturing client that reuses the real SDK validation and query serializer. */
@@ -24,7 +25,22 @@ test("the SDK exposes registrations in place of senderRegistrations", () => {
 	const sdk = new SignalHouseSDK({ apiKey: "test", baseUrl: "https://example.invalid", enableAdmin: true });
 	assert.ok(sdk.registrations instanceof Registrations);
 	assert.equal("senderRegistrations" in sdk, false);
-	assert.deepEqual(Object.keys(sdk.registrations.admin), ["reviewRegistration", "correctRegistration", "addNumber", "reconcile", "getApplication", "assignRegistration", "nudgeRegistration"]);
+	assert.deepEqual(Object.keys(sdk.registrations.admin), ["reviewRegistration", "correctRegistration", "addNumber", "reconcile", "getApplication", "assignRegistration", "nudgeRegistration",
+		"markCarrierUpdateSent", "addComment", "getComments"]);
+});
+
+test("the staff carrier update and comment methods reach their routes", async () => {
+	const { client, calls } = captureClient();
+	const domain = new Registrations(client, true);
+	await domain.admin.markCarrierUpdateSent({ registrationId: "RCSA7K2M1QZ8RP" });
+	await domain.admin.addComment({ registrationId: "RCSA7K2M1QZ8RP", comment: "Called the brand contact." });
+	await domain.admin.getComments({ registrationId: "RCSA7K2M1QZ8RP" });
+	assert.deepEqual(calls.map(({ path, request }) => [request.method, path, request.body]), [
+		["PUT", "/registration/RCSA7K2M1QZ8RP/carrier-update", { status: "SENT" }],
+		["POST", "/registration/RCSA7K2M1QZ8RP/comments", { comment: "Called the brand contact." }],
+		["GET", "/registration/RCSA7K2M1QZ8RP/comments", undefined],
+	]);
+	await assert.rejects(domain.admin.addComment({ registrationId: "RCSA7K2M1QZ8RP" }), /comment/);
 });
 
 test("the staff review queue methods need enableAdmin and reach their routes", async () => {
@@ -237,6 +253,25 @@ for (const [method, path] of [["getAnalytics", "/message/analytics"], ["getAnaly
 		assert.equal(params(calls[2].path).has("registrationId"), false);
 	});
 }
+
+test("getConsentRecords reads the consent ledger export with its filters", async () => {
+	const { client, calls } = captureClient();
+	await new Messages(client).getConsentRecords({ groupId: "G0000001", recipientPhoneNumber: "15125559876", startDate: "2026-12-01", endDate: "2026-12-31", page: 2, limit: 500 });
+	await new Messages(client).getConsentRecords({ groupId: "G0000001" });
+	assert.equal(calls[0].request.method, "GET");
+	assert.equal(pathname(calls[0].path), "/message/dnc/consent-records");
+	assert.deepEqual(Object.fromEntries(params(calls[0].path)), { groupId: "G0000001", recipientPhoneNumber: "15125559876", startDate: "2026-12-01", endDate: "2026-12-31", page: "2", limit: "500" });
+	assert.equal(calls[1].path, "/message/dnc/consent-records?groupId=G0000001");
+});
+
+test("the audit read needs enableAdmin and reaches GET /audit", async () => {
+	assert.equal(new Audit(captureClient().client).admin, undefined);
+	assert.ok(new SignalHouseSDK({ apiKey: "test", baseUrl: "https://example.invalid", enableAdmin: true }).audit.admin.getAuditEvents);
+	const { client, calls } = captureClient();
+	await new Audit(client, true).admin.getAuditEvents({ entityType: "registration", entityId: "RCSA7K2M1QZ8RP", page: 1, limit: 25 });
+	assert.equal(calls[0].request.method, "GET");
+	assert.equal(calls[0].path, "/audit?entityType=registration&entityId=RCSA7K2M1QZ8RP&page=1&limit=25");
+});
 
 test("getPhoneNumbers forwards registrationId", async () => {
 	const { client, calls } = captureClient();
