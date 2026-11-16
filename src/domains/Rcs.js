@@ -496,7 +496,7 @@ export class RcsMessages {
 	 * @param {string} [params.expireTime] - ISO-8601 time the RCS message expires
 	 * @param {RcsMessageFallback} [params.fallback] - The fallback to price; its from is optional here, and with none the leg is priced on the channel of the agent's linked campaign
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { billingClass, segments, recipientCount, rcsLeg, fallbackLeg, totals, balance, issues, warnings }; rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB for one recipient, and rcsLeg.cost already holds it for every recipient; rcsLeg.cost is null with the fallback mode sms_only; a message over 100 MB adds a MEDIA_TOO_LARGE issue.
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to { billingClass, segments, recipientCount, rcsLeg, fallbackLeg, totals, balance, issues, warnings }; rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB for one recipient, and rcsLeg.cost already holds it for every recipient; rcsLeg.cost is null with the fallback mode sms_only; a message over 100 MB adds a MEDIA_TOO_LARGE issue, and an external media URL that redirects adds a MEDIA_REDIRECT issue.
 	 */
 	async estimate({ agentId, recipients, recipientCount, templateId, templateVersion, content, contentFormat, trafficType, ttlSeconds, expireTime, fallback, options = {} }) {
 		this.client._require({ agentId });

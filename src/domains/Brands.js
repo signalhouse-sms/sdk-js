@@ -520,6 +520,22 @@ export class Brands {
   }
 
   /**
+   * Get TCR's identity feedback for a brand: why TCR could not verify it (status UNVERIFIED)
+   * @async
+   * @roles api, admin, developer, billing, user
+   * @param {Object} params - The parameters for getting the feedback
+   * @param {BrandLookupId} params.brandId - Brand lookup id (carrier Brand ID, record `_id`, or internal reference).
+   * @param {RequestOptions} [params.options] - Additional options for the request
+   * @throws {Error} Throws an error if the brandId parameter is missing
+   * @returns {Promise<SdkResponse<Object>>} BrandFeedback: { brandId, category: [{ id, displayName, description, fields, errors: [{ code, message }] }] }
+   */
+  async getBrandFeedback({ brandId, options = {} }) {
+    this.client._require({ brandId });
+    const safeBrandId = encodeURIComponent(brandId);
+    return this.client(`/brand/feedback/${safeBrandId}`, { method: 'GET', ...options });
+  }
+
+  /**
    * Submit a brand identity status appeal with supporting documentation
    * @async
    * @roles api, admin, developer, billing, user

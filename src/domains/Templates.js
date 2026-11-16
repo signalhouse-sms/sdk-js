@@ -11,12 +11,20 @@
  */
 
 /**
+ * A declared placeholder. Placeholders go in text, card titles and descriptions, button labels and fallback text. A url
+ * variable may fill a whole link or media URL, and any variable may fill a URL's path, query or fragment, percent-encoded. A
+ * dial number takes one phoneNumber variable and a calendar time one dateTime variable, each for the whole field. A calendar
+ * title and description and postbackData take text. A location's address and label take none. The send checks each filled
+ * field and blocks a recipient whose field fails with CONTENT_INVALID.
  * @typedef {Object} RcsVariable
  * @property {string} key - Placeholder key used as {{key}} (/^[a-z][a-z0-9_]{0,63}$/)
  * @property {string} [label] - Display label
  * @property {"text"|"number"|"dateTime"|"phoneNumber"|"url"} type - Value type
- * @property {boolean} required - Whether a send must supply a value
- * @property {string} [default] - Value used when none is supplied
+ * @property {boolean} required - Without missingPolicy: whether a recipient with no value and no default is blocked
+ * @property {"default"|"block"|"drop"} [missingPolicy] - What a recipient with no value gets: the default (empty when none),
+ *   a VARIABLE_MISSING block, or the send without each block that uses the variable. Omitted keeps the older rule: the
+ *   default, else VARIABLE_MISSING when required, else empty. An empty value, or one of only spaces, counts as no value
+ * @property {string} [default] - Value used when none is supplied, by the default policy or with no policy
  * @property {string} [sample] - Example value for previews
  */
 
@@ -117,6 +125,8 @@
  * @property {"image"|"video"|"audio"|"file"} kind - Media kind
  * @property {number|null} width - Pixel width, when known
  * @property {number|null} height - Pixel height, when known
+ * @property {{ mms?: { url: string, bytes: number } }} variants - An image over the MMS size limit has an MMS copy, which an
+ *   MMS fallback leg sends; {} otherwise
  * @property {string} createdAt - ISO timestamp
  */
 
@@ -138,7 +148,8 @@
  * @property {Object<string, string[]>} trafficByUseCase - The traffic types each agent use case may send
  * @property {Object<string, string>} defaultTrafficByUseCase - The traffic type a single-purpose agent sends when a request names none
  * @property {{ cardButtonsInline: number, suggestedActionsInline: number, linesPerField: number, charsPerLine: number }} ios - How an iPhone lays out RCS content
- * @property {{ maxUploadBytes: number, mimeTypes: string[] }} media - Upload constraints
+ * @property {{ maxUploadBytes: number, mimeTypes: string[], maxImageEdge: number, imageTargetBytes: number }} media - Upload
+ *   constraints; an image over maxImageEdge or imageTargetBytes is compressed to both
  * @property {{ available: boolean }} geocoding - Whether this server resolves VIEW_LOCATION addresses (geocodeAddress answers 503 when false)
  * @property {{ provider: "infobip"|"sinch", adapterVersion: string, limits: Object<string, number>, unsupported: Array<{ feature: string, code: string, message: string }> }|null} provider - Provider-specific limits when a provider was requested
  */
@@ -308,7 +319,7 @@ export class Templates {
 
 	/**
 	 * Publish a template's current draft; no draft returns 409 NO_DRAFT, a draft changed mid-publish returns 409 DRAFT_CHANGED (publish again) and an incomplete draft returns 400 TEMPLATE_INVALID
-	 * A block whose text or image the Moderation API flags is an error with code CONTENT_POLICY_FLAGGED, whose message names the category ("Content moderation flagged this text: spam"). The check passes when the Moderation API fails.
+	 * A block whose text or image the Moderation API flags is an error with code CONTENT_POLICY_FLAGGED, whose message names the category ("Content moderation flagged this text: spam"). The check passes when the Moderation API fails. An image URL with a variable is moderated at send instead, with its value filled in, and a refused image blocks the recipient with MODERATION.
 	 * @async
 	 * @roles api, admin, developer
 	 * @param {Object} params - The parameters for publishing a template
@@ -368,7 +379,7 @@ export class Templates {
 
 	/**
 	 * Validate an unsaved body or a stored version without writing anything
-	 * Validate runs the publish checks, the content policy check included: a block whose text or image the Moderation API flags is an error with code CONTENT_POLICY_FLAGGED. Saving a draft does not run that check.
+	 * Validate runs the publish checks, the content policy check included: a block whose text or image the Moderation API flags is an error with code CONTENT_POLICY_FLAGGED. An image URL with a variable is moderated at send instead, with its value filled in, and a refused image blocks the recipient with MODERATION. Saving a draft does not run that check.
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} params - The parameters for validation; pass exactly one of body or version
@@ -424,7 +435,9 @@ export class Templates {
 	}
 
 	/**
-	 * Upload a media file for use in template bodies; returns its public URL. 503 when media storage is not configured
+	 * Upload a media file for use in template bodies; returns its public URL. An image over 1920 px on its longest edge or over
+	 * 5,000,000 bytes is compressed to both, and one over the MMS size limit also gets an MMS copy in variants.mms. 503 when
+	 * media storage is not configured
 	 * @async
 	 * @roles api, admin, developer
 	 * @param {Object} params - The parameters for the upload

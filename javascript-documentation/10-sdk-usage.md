@@ -469,7 +469,7 @@ Channel-generic templates under `/template` (today the only channel is `"rcs"`).
 | `list` | `{ groupId, state, channel, tag, search, sortBy, sortOrder, page, limit }` | List templates; returns `{ data, total, page, limit }` |
 | `get` | `{ templateId, groupId, version }` | Get a template head with one version |
 | `update` | `{ templateId, groupId, name, tag, body }` | Rename, retag or replace the draft body; `tag: null` clears it, omitted leaves it unchanged |
-| `publish` | `{ templateId, groupId }` | Publish the current draft; no draft returns 409 `NO_DRAFT`, a draft changed mid-publish returns 409 `DRAFT_CHANGED` (publish again), an incomplete draft returns 400 `TEMPLATE_INVALID`; a block whose text or image the Moderation API flags is an error with code `CONTENT_POLICY_FLAGGED` |
+| `publish` | `{ templateId, groupId }` | Publish the current draft; no draft returns 409 `NO_DRAFT`, a draft changed mid-publish returns 409 `DRAFT_CHANGED` (publish again), an incomplete draft returns 400 `TEMPLATE_INVALID`; a block whose text or image the Moderation API flags is an error with code `CONTENT_POLICY_FLAGGED`; an image URL with a variable is moderated at send instead, and a refused image blocks the recipient with `MODERATION` |
 | `archive` | `{ templateId, groupId }` | Archive a template; returns the head |
 | `versions` | `{ templateId, groupId, page, limit }` | List versions without bodies |
 | `validate` | `{ templateId, groupId, body, version }` | Validate exactly one of an unsaved `body` or a stored `version` with the publish checks, `CONTENT_POLICY_FLAGGED` included; writes nothing |

@@ -95,6 +95,38 @@ AUDIT  (signalHouse.audit.admin — enableAdmin only, staff)
     ARCHIVE. signalhouse_* roles only.
 
 
+CONTRACTS  (signalHouse.contracts.admin — enableAdmin only, staff)
+--------------------------------------------------------------------------------
+  The queue for pricing read from signed PandaDoc contracts. signalhouse_*
+  roles only. Statuses: RECEIVED, UNMATCHED, PARSE_FAILED, PENDING_REVIEW,
+  READY, SCHEDULED, APPLYING, APPLIED, APPLY_FAILED, REJECTED, SUPERSEDED.
+
+  admin.getContracts({ status, groupId, page, limit })
+    GET /contract. status is one status, an array or a comma-separated list.
+    limit defaults to 25, max 100. Returns: { data, total, page, limit }.
+  admin.getContract({ contractId })
+    GET /contract/:contractId. Issues, diff, signers, pandadocUrl, a
+    suggestedGroup { groupId, outcome, score } when it has no group, and an
+    applyPreview { branch, immediateCharge } (null when the plan is unreadable).
+  admin.linkContractGroup({ contractId, groupId })
+    POST /contract/:contractId/link. Links the group, resets the status to
+    RECEIVED (a schedule is dropped), then re-reads the document against it.
+    Refused once applying, applied, failed or rejected.
+  admin.applyContract({ contractId, expectedUpdatedAt, expectedGroupId,
+                        expectedPlanCharge })
+    POST /contract/:contractId/apply. Applies the pricing now; a contract dated
+    in the future becomes SCHEDULED. 409 when the contract changed since it was
+    reviewed (updatedAt or group) or the group is busy. expectedPlanCharge is
+    the applyPreview.immediateCharge shown; a plan create charging anything
+    else fails before charging. The approval also overrides HOLD_TEMPLATE_PLAN
+    for a contract with plan terms; every other hold still stops the apply.
+  admin.rejectContract({ contractId, reason })
+    POST /contract/:contractId/reject. Refused once applying or applied, and
+    for a failed apply that may have written pricing or charged a card.
+  admin.reparseContract({ contractId })
+    POST /contract/:contractId/reparse. Re-reads it from PandaDoc. Refused while
+    scheduled, and once applying, applied, failed or rejected.
+
 AUTH  (signalHouse.auth)
 --------------------------------------------------------------------------------
   login({ email, password, deviceToken })
@@ -355,6 +387,9 @@ BRANDS  (signalHouse.brands)
   getAppealHistory({ brandId })
     List identity status appeals for a brand.
 
+  getBrandFeedback({ brandId })
+    Read TCR's identity feedback: why TCR could not verify the brand.
+
   submitAppeal({ brandId, appealCategories, explanation, file })
     Submit a brand identity status appeal with supporting documentation.
     Uses multipart/form-data automatically.
@@ -552,6 +587,25 @@ TEMPLATES  (signalHouse.templates)
   version selectors are a positive integer, "draft" or "published"; omitted
   means the published version, else the draft.
 
+  Each variable may set missingPolicy, what a recipient with no value gets:
+  default (the variable's default, empty when none is declared), block (the
+  recipient is blocked with VARIABLE_MISSING, even with a default) or drop (the
+  send leaves out each block that uses the variable, a message block with its
+  suggestions blocks; a drop that leaves nothing to send blocks with
+  VARIABLE_MISSING). Without missingPolicy, a missing value takes the default,
+  else VARIABLE_MISSING when required, else an empty value. An empty value, or
+  one of only spaces, counts as no value.
+
+  Placeholders go in text, card titles and descriptions, button labels and
+  fallback text. A url variable may fill a whole link or media URL, and any
+  variable may fill the path, query or fragment of a URL whose scheme and host
+  are written out, percent-encoded. A dial number takes one phoneNumber variable
+  and each calendar time one dateTime variable, for the whole field. A calendar
+  title and description and postbackData take text; a location's address and
+  label take none. Publish checks where each placeholder sits
+  (PLACEHOLDER_NOT_ALLOWED); the send checks each filled field and blocks a
+  recipient whose field fails with CONTENT_INVALID.
+
   create({ groupId, name, tag, body })
     Create a template with draft version 1 (201). Returns { head, version, validation }. validation is
     { valid, errors, warnings }, null when the checks could not run; update returns it too, and publish returns
@@ -580,7 +634,8 @@ TEMPLATES  (signalHouse.templates)
     "CONTENT_POLICY_FLAGGED", path, message, blockId } whose message names the
     category, for example "Content moderation flagged this text: spam". The
     check passes when the Moderation API fails, and saving a draft does not
-    run it.
+    run it. An image URL with a variable is moderated at send instead, with its
+    value filled in, and a refused image blocks the recipient with MODERATION.
 
   archive({ templateId, groupId })
     Archive a template. Returns the template head.
@@ -608,8 +663,12 @@ TEMPLATES  (signalHouse.templates)
 
   uploadMedia({ groupId, file, fileName })
     Upload a Blob/File; returns { mediaId, url, bytes, mimeType, kind, width,
-    height, ... } (201). Use url in a template body. 503 when media storage is
-    not configured. Uses multipart/form-data automatically.
+    height, variants, ... } (201). Use url in a template body. 503 when media
+    storage is not configured. Uses multipart/form-data automatically.
+    An image over 1920 px on its longest edge or over 5,000,000 bytes is
+    compressed to both, and bytes, width and height describe the stored file. An
+    image over the MMS size limit also gets an MMS copy, variants.mms {url,
+    bytes}, which an MMS fallback leg sends; variants is {} otherwise.
     Required: groupId, file
 
   Pass options.idempotencyKey on create, update, publish, archive and
@@ -805,7 +864,8 @@ RCS MESSAGES  (signalHouse.rcs.messages)
     Required: agentId, recipients
     Returns: { valid, errors, warnings, billingClass, segments,
     estimatedCostMicros, unsupportedFiles, recipients }. It runs a send's
-    checks and holds no funds. valid is true only with no errors.
+    checks and holds no funds. valid is true only with no errors. An external
+    media URL that redirects blocks its recipient with a MEDIA_REDIRECT error.
 
   estimate({ agentId, recipients, recipientCount, templateId, templateVersion,
              content, contentFormat, trafficType, ttlSeconds, expireTime,
@@ -818,7 +878,7 @@ RCS MESSAGES  (signalHouse.rcs.messages)
     Returns: { billingClass, segments, recipientCount, rcsLeg, fallbackLeg,
     totals, balance, issues, warnings }
     rcsLeg.mediaSurcharge is the carrier's surcharge on media over 5 MB for one recipient, and rcsLeg.cost already holds it for every recipient; rcsLeg.cost is null with the fallback mode sms_only; a message over 100 MB adds a MEDIA_TOO_LARGE
-    issue.
+    issue, and an external media URL that redirects adds a MEDIA_REDIRECT issue.
 
   capabilities({ agentId, phoneNumbers })
     POST /rcs/capabilities. Report which numbers (up to 500) can receive RCS.
