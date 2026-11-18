@@ -48,6 +48,37 @@ export class Subgroups {
 	constructor(client, enableAdmin) {
 		this.client = client;
 		this.enableAdmin = enableAdmin;
+
+		// Hidden Admin namespace INSIDE the domain
+		if (enableAdmin) {
+			this.admin = {
+				/**
+				 * Link (or, with ghlLocationId: null, unlink) a GoHighLevel location to a subgroup. At most
+				 * one subgroup may hold a given ghlLocationId; linking it here steals it from any other
+				 * subgroup that currently holds it. Intended for ghl-app/backend's write-through right after
+				 * it locally claims a location -> subgroup link.
+				 * @async
+				 * @roles signalhouse_api, signalhouse_admin
+				 * @param {Object} params - The parameters for linking a GHL location
+				 * @param {string} params.subgroupId - The subgroup to link
+				 * @param {string|null} params.ghlLocationId - The GHL location ID to link, or null to unlink
+				 * @param {string|null} [params.ghlLocationName] - Display name of the GHL location. Omit to leave the
+				 *   subgroup's currently stored name untouched (only when ghlLocationId is unchanged - otherwise
+				 *   cleared to null); always cleared to null when unlinking
+				 * @param {Date|string} [params.claimedAt] - When this link was locally claimed by the caller.
+				 *   Required when linking (ghlLocationId is non-null) - used to detect and reject a delayed/
+				 *   out-of-order push whose claim has since been superseded by a newer one recorded elsewhere.
+				 *   Ignored when unlinking.
+				 * @param {RequestOptions} [params.options] - Additional options for the request
+				 * @throws {Error} Throws an error if the subgroupId parameter is missing
+				 * @returns {Promise<SdkResponse<any>>} - The updated subgroup object returned from the server
+				 */
+				linkGhlLocation: async ({ subgroupId, ghlLocationId, ghlLocationName, claimedAt, options = {} }) => {
+					this.client._require({ subgroupId });
+					return this.client(`/subgroup/ghl-location-link`, { method: "PUT", body: { subgroupId, ghlLocationId, ghlLocationName, claimedAt }, ...options });
+				},
+			};
+		}
 	}
 
 	/**
@@ -116,6 +147,26 @@ export class Subgroups {
 		this.client._require({ id, updateData });
 		const safeId = encodeURIComponent(id);
 		return this.client(`/subgroup/${safeId}`, { method: "PUT", body: updateData, ...options });
+	}
+
+	/**
+	 * Resolve the mapping between a GoHighLevel location and a Signal House subgroup, in either
+	 * direction. Provide exactly one of ghlLocationId or subgroupId. groupId is optional - customer
+	 * roles default to their own accessible group(s) and are rejected if they name a group they don't
+	 * belong to; a subgroupId/ghlLocationId that belongs to a different group than the caller's returns
+	 * a 404, identical to a nonexistent one.
+	 * @async
+	 * @roles api, admin, developer, billing, user
+	 * @param {Object} params - The parameters for the lookup
+	 * @param {string} [params.groupId] - Restrict the lookup to an accessible group ID
+	 * @param {string} [params.ghlLocationId] - GHL location ID to resolve to its subgroup (mutually exclusive with subgroupId)
+	 * @param {string} [params.subgroupId] - Subgroup ID to resolve to its GHL location (mutually exclusive with ghlLocationId)
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - `{ groupId, subgroupId, subgroupName, ghlLocationId, ghlLocationName }`
+	 */
+	async lookupGhlLocation({ groupId, ghlLocationId, subgroupId, options = {} } = {}) {
+		const queryString = this.client._getQueryString({ groupId, ghlLocationId, subgroupId });
+		return this.client(`/subgroup/ghl-location-lookup${queryString}`, { method: "GET", ...options });
 	}
 
 	/**

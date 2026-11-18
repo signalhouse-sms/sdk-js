@@ -84,6 +84,7 @@ The SDK organizes API endpoints into domain namespaces:
 | `signalHouse.billing` | Wallet balance, transactions, payment methods |
 | `signalHouse.brands` | 10DLC brand registration and management |
 | `signalHouse.campaigns` | 10DLC campaign creation and management |
+| `signalHouse.compliance` | Compliance cases: read cases, answer requirements, upload and download files; staff methods under `compliance.admin` |
 | `signalHouse.groups` | Group management |
 | `signalHouse.landings` | Landing page creation and management |
 | `signalHouse.messages` | Send SMS/MMS/Group MMS, query messages, analytics |
@@ -692,6 +693,37 @@ const shortlink = await signalHouse.shortlinks.getShortlink({
 const redirect = await signalHouse.shortlinks.getShortlinkRedirect({
   shortlinkId: "sl_abc123",
 });
+```
+
+---
+
+### Compliance
+
+Compliance cases under `/compliance`. Signal House opens a case when a carrier suspends one of your campaigns, brands, numbers or RCS agents, when a carrier escalates a message as a ticket, or when Signal House needs something from you. You read your cases, answer their requirements and upload files; only Signal House opens, works and closes a case. Subscribe to the `COMPLIANCE_CASE_UPDATED` webhook to hear when one changes.
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `getCases` | `{ groupId, status, stage, objectType, objectId, subgroupId, suspended, from, to, sort, page, limit }` | `GET /compliance/cases`; your visible cases, newest first. Returns `{ data, total, page, limit, totalPages, counts: { open, waitingOnYou } }`. `stage=customer` lists your open items |
+| `getCase` | `{ caseId }` | `GET /compliance/cases/:caseId`; the case with its `stage`, `blocks` (who stopped the traffic), `tickets` and `requirements` |
+| `answerRequirement` | `{ caseId, requirementId, answer, fileIds }` | `PUT /compliance/cases/:caseId/requirements/:requirementId`; a note, files from `uploadFile`, or both. A `RECORDS` requirement needs a file or a note |
+| `uploadFile` | `{ caseId, requirementId, file, fileName }` | `POST /compliance/files` (multipart); CSV, XLSX, PDF, PNG, JPG or TXT up to 10 MB. A CSV/TXT Blob needs `fileName` ending in `.csv`/`.txt`; a named File keeps its name unless overridden. Returns `{ fileId, fileName, mimeType, size }` |
+| `getFile` | `{ fileId }` | `GET /compliance/files/:fileId`; the file bytes as an `ArrayBuffer` |
+
+Staff keys with `enableAdmin: true` also get `compliance.admin`: `logAlert`, `liftBlock`, `getAlerts`, `getAlert`, `triageAlert`, `openCase`, `updateCase`, `sendRequirements`, `requestLift`, `closeCase`, `remindCase`, `addCaseNote` and `getStrikes`. They are for `signalhouse_admin` and `signalhouse_user` only.
+Only `signalhouse_admin` may log or lift a block, including a reading that would create an automatic hold. Staff cannot submit the system-only `NUMBER_RELEASED` close reason.
+
+A successful number release closes its alerts immediately. Eligible cases return `closeReason: "NUMBER_RELEASED"`; shared cases stay open for other alerts, unanswered requirements or review. Released blocks include `numberReleasedAt` without inventing `liftedAt`. Historical strikes remain; strike periods include `endedAt` for a lift or release.
+
+```javascript
+const { data } = await signalHouse.compliance.getCases({ stage: "customer" });
+for (const c of data.data) {
+  const upload = await signalHouse.compliance.uploadFile({ caseId: c.caseId, requirementId: c.requirements[0].requirementId, file });
+  await signalHouse.compliance.answerRequirement({
+    caseId: c.caseId,
+    requirementId: c.requirements[0].requirementId,
+    fileIds: [upload.data.fileId],
+  });
+}
 ```
 
 ---

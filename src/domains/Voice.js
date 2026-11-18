@@ -8,6 +8,7 @@ import { GlobalVoiceSettings } from "./voice/GlobalVoiceSettings.js";
 import { Tokens } from "./voice/Tokens.js";
 import { Analytics } from "./voice/Analytics.js";
 import { OutboundVoice } from "./voice/OutboundVoice.js";
+import { CallFlows } from "./voice/CallFlows.js";
 
 /**
  * Voice domain — wraps the Voice service (mounted under /voice on the
@@ -19,6 +20,7 @@ import { OutboundVoice } from "./voice/OutboundVoice.js";
  * - `sdk.voice.sipProfiles`               — SIP profile / endpoint (single registerable UA).
  * - `sdk.voice.programmableVoiceProfiles` — Programmable Voice Profile (route a set of numbers through Signal House).
  * - `sdk.voice.numberRoutes`              — Per-number inbound route (overrides the profile and subgroup settings).
+ * - `sdk.voice.callFlows`                 — Call flows: customer-built call trees a number or profile can run.
  * - `sdk.voice.calls`                     — Twilio-compat programmatic call control (create/hangup/etc.).
  * - `sdk.voice.callLogs`                  — Account-scoped call history: list/get + presigned recording.
  * - `sdk.voice.globalVoiceSettings`       — Account-wide voice defaults (accepted regions, max spend, E911).
@@ -39,5 +41,6 @@ export class Voice {
 		this.tokens = new Tokens(client, enableAdmin);
 		this.analytics = new Analytics(client, enableAdmin);
 		this.outboundVoice = new OutboundVoice(client, enableAdmin);
+		this.callFlows = new CallFlows(client, enableAdmin);
 	}
 }

@@ -6,7 +6,7 @@
 
 /**
  * @typedef {Object} NumberRouteData
- * @property {"FORWARD"|"WEBRTC"|"SIP_TRUNK"|"SIP_PROFILE"|"CALL_CONTROL"|"AI"|"VOICEMAIL"} routeAction - How inbound calls to the number are handled.
+ * @property {"FORWARD"|"WEBRTC"|"SIP_TRUNK"|"SIP_PROFILE"|"CALL_CONTROL"|"AI"|"VOICEMAIL"|"CALL_FLOW"} routeAction - How inbound calls to the number are handled. CALL_FLOW runs a call flow (see `sdk.voice.callFlows`).
  * @property {string|null} [forwardToE164] - FORWARD destination (required for FORWARD), or the WEBRTC no-answer destination when noAnswerAction is FORWARD.
  * @property {"VOICEMAIL"|"FORWARD"|"KEEP_RINGING"|null} [noAnswerAction] - WEBRTC only: what happens when nobody answers (default VOICEMAIL).
  * @property {number|null} [noAnswerSeconds] - WEBRTC only: seconds to ring before the no-answer action, 5-120 (default 20).
@@ -14,6 +14,7 @@
  * @property {string|null} [routeSipProfileId] - SIP endpoint to ring (required for SIP_PROFILE).
  * @property {string|null} [webhookUrl] - SHML program URL (required for CALL_CONTROL).
  * @property {string|null} [routeAgentProfileId] - AI agent profile id, AGP… (required for AI).
+ * @property {string|null} [routeCallFlowId] - Call flow to run (required for CALL_FLOW). Must be in the number's subgroup. It need not be published yet: until it is, calls fall through to the number's profile or subgroup settings, which `effective` shows.
  * @property {boolean} [recordingEnabled] - Record calls handled by this route.
  */
 

@@ -9,13 +9,14 @@
  * @property {string} name - Profile name (required).
  * @property {string[]} subgroupIds - Subgroups this profile spans (required, at least one).
  * @property {string} [region] - Region/POP label.
- * @property {"FORWARD"|"WEBRTC"|"SIP_TRUNK"|"SIP_PROFILE"|"CALL_CONTROL"|"AI"} [routeAction] - Inbound call action (default "FORWARD"). Deliver the call to a PSTN number (FORWARD), ring the profile's subgroup registered softphones (WEBRTC), send to a SIP trunk (SIP_TRUNK), ring a registered SIP endpoint (SIP_PROFILE), hand the call to your programmable call-control webhook that returns SHML (CALL_CONTROL), or answer it with an AI agent (AI).
+ * @property {"FORWARD"|"WEBRTC"|"SIP_TRUNK"|"SIP_PROFILE"|"CALL_CONTROL"|"AI"|"CALL_FLOW"} [routeAction] - Inbound call action (default "FORWARD"). Deliver the call to a PSTN number (FORWARD), ring the profile's subgroup registered softphones (WEBRTC), send to a SIP trunk (SIP_TRUNK), ring a registered SIP endpoint (SIP_PROFILE), hand the call to your programmable call-control webhook that returns SHML (CALL_CONTROL), answer it with an AI agent (AI), or run a call flow (CALL_FLOW).
  * @property {string} [forwardToE164] - Destination number, required when routeAction is "FORWARD".
  * @property {number} [forwardAfterSeconds] - Ring seconds before the action fires.
  * @property {string} [routeSipTrunkId] - SIP trunk id, required when routeAction is "SIP_TRUNK".
  * @property {string} [routeSipProfileId] - SIP endpoint id, required when routeAction is "SIP_PROFILE".
  * @property {string} [webhookUrl] - Your inbound voice webhook (SHML program URL), required when routeAction is "CALL_CONTROL". Inbound calls to this profile's numbers are driven by the SHML your webhook returns.
  * @property {string} [routeAgentProfileId] - AI agent profile id (AGP…), required when routeAction is "AI". The agent's prompt, voice, model and tools are read when the call lands, so editing the agent takes effect on the next call with nothing to re-save here.
+ * @property {string} [routeCallFlowId] - Call flow to run, required when routeAction is "CALL_FLOW". Must be in one of the profile's subgroups.
  * @property {boolean} [recordingEnabled] - Record calls on this profile.
  * @property {boolean} [enabled] - Active state (default true).
  */
@@ -25,13 +26,14 @@
  * @property {string} [name] - Profile name.
  * @property {string[]} [subgroupIds] - Subgroups this profile spans.
  * @property {string|null} [region] - Region/POP label.
- * @property {"FORWARD"|"WEBRTC"|"SIP_TRUNK"|"SIP_PROFILE"|"CALL_CONTROL"|"AI"} [routeAction] - Inbound call action (FORWARD | WEBRTC | SIP_TRUNK | SIP_PROFILE | CALL_CONTROL | AI).
+ * @property {"FORWARD"|"WEBRTC"|"SIP_TRUNK"|"SIP_PROFILE"|"CALL_CONTROL"|"AI"|"CALL_FLOW"} [routeAction] - Inbound call action (FORWARD | WEBRTC | SIP_TRUNK | SIP_PROFILE | CALL_CONTROL | AI | CALL_FLOW).
  * @property {string|null} [forwardToE164] - FORWARD destination.
  * @property {number|null} [forwardAfterSeconds] - Ring seconds before the action fires.
  * @property {string|null} [routeSipTrunkId] - SIP trunk id (required when routeAction is "SIP_TRUNK").
  * @property {string|null} [routeSipProfileId] - SIP endpoint id (required when routeAction is "SIP_PROFILE").
  * @property {string|null} [webhookUrl] - Inbound voice webhook / SHML program URL (required when routeAction is "CALL_CONTROL"). Pass null to clear.
  * @property {string|null} [routeAgentProfileId] - AI agent profile id (AGP…), required when routeAction is "AI". Pass null to clear.
+ * @property {string|null} [routeCallFlowId] - Call flow to run, required when routeAction is "CALL_FLOW". Must be in one of the profile's subgroups; narrowing subgroupIds away from it is refused. Pass null to clear.
  * @property {boolean} [recordingEnabled] - Record calls on this profile.
  * @property {boolean} [enabled] - Active state.
  */

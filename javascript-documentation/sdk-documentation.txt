@@ -393,6 +393,9 @@ BRANDS  (signalHouse.brands)
   submitAppeal({ brandId, appealCategories, explanation, file })
     Submit a brand identity status appeal with supporting documentation.
     Uses multipart/form-data automatically.
+    TCR refusal: a 4xx (e.g. TCR code 592, brand older than 45 days) returns
+      { error: "TCR refused the appeal: <reason>", details: { code, message } }
+      with TCR's own code and message. Retrying unchanged will be refused again.
     appealCategories: array of strings (VERIFY_TAX_ID, VERIFY_NON_PROFIT, VERIFY_GOVERNMENT)
     explanation: string (max 1024 chars)
     file: binary (supported: .jpg, .jpeg, .png, .bmp, .raw, .tiff, .pdf, .docx, .htm, .odt, .rtf, .txt, .xml)
