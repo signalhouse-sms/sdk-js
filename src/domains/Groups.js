@@ -236,6 +236,74 @@ export class Groups {
 	}
 
 	/**
+	 * Read a group's Ontraport connection status: whether it's connected, and the webhook URL to paste
+	 * into an Ontraport automation's "Send to a Webhook" step. Never includes the API Key or App ID.
+	 * @async
+	 * @roles admin, developer, signalhouse_admin
+	 * @param {Object} params
+	 * @param {string} params.groupId - The group
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - { connected, webhookUrl, enabled }
+	 */
+	async getOntraportConnection({ groupId, options = {} }) {
+		this.client._require({ groupId });
+		const queryString = this.client._getQueryString({ groupId });
+		return this.client(`/group/ontraport${queryString}`, { method: "GET", ...options });
+	}
+
+	/**
+	 * Connect (or reconnect) a group's Ontraport account. The API Key and App ID are verified with a
+	 * read-only call to Ontraport before anything is stored; a bad pair throws rather than saving.
+	 * Requires a Signal House Admin to have enabled featureFlags.ontraportIntegration for the group first
+	 * (opt-in, off by default) - otherwise this throws a validation error.
+	 * @async
+	 * @roles admin, developer, signalhouse_admin
+	 * @param {Object} params
+	 * @param {string} params.groupId - The group
+	 * @param {string} params.apiKey - The Ontraport API Key
+	 * @param {string} params.appId - The Ontraport App ID
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - { connected, webhookUrl, enabled }
+	 */
+	async connectOntraport({ groupId, apiKey, appId, options = {} }) {
+		this.client._require({ groupId, apiKey, appId });
+		return this.client(`/group/ontraport`, { method: "PUT", body: { groupId, apiKey, appId }, ...options });
+	}
+
+	/**
+	 * Disconnect (disable) a group's Ontraport account. The webhook stops accepting deliveries
+	 * immediately; stored credentials and contact links are kept, so reconnecting the same account
+	 * resumes cleanly. The primary self-service way to kill a leaked webhook URL.
+	 * @async
+	 * @roles admin, developer, signalhouse_admin
+	 * @param {Object} params
+	 * @param {string} params.groupId - The group
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - { connected, webhookUrl, enabled }
+	 */
+	async disconnectOntraport({ groupId, options = {} }) {
+		this.client._require({ groupId });
+		const queryString = this.client._getQueryString({ groupId });
+		return this.client(`/group/ontraport${queryString}`, { method: "DELETE", ...options });
+	}
+
+	/**
+	 * Mint a fresh webhook token for an existing Ontraport connection, immediately invalidating the old
+	 * URL. A second self-service way to kill a leaked webhook URL, for when the customer wants to keep
+	 * sending (unlike disconnectOntraport) but needs a new URL to paste into a rebuilt automation.
+	 * @async
+	 * @roles admin, developer, signalhouse_admin
+	 * @param {Object} params
+	 * @param {string} params.groupId - The group
+	 * @param {RequestOptions} [params.options] - Additional options for the request
+	 * @returns {Promise<SdkResponse<any>>} - { connected, webhookUrl, enabled }
+	 */
+	async regenerateOntraportWebhookToken({ groupId, options = {} }) {
+		this.client._require({ groupId });
+		return this.client(`/group/ontraport/regenerate-token`, { method: "PUT", body: { groupId }, ...options });
+	}
+
+	/**
 	 * Claim an email domain for a group's SSO; the response includes the DNS TXT record that verifies it
 	 * @async
 	 * @roles admin

@@ -30,7 +30,7 @@
 /**
  * @typedef {Object} CallFlowStep
  * @property {string} id - A UUID you generate. It is kept as the step's id, so it stays stable across saves.
- * @property {"inbound"|"answer"|"play"|"ivr"|"fwd_phone"|"voicemail"|"hangup"} type - The step kind. `catalog()` lists the kinds this service can run.
+ * @property {"inbound"|"answer"|"play"|"sms"|"ivr"|"fwd_phone"|"voicemail"|"hangup"} type - The step kind. `catalog()` lists the kinds this service can run.
  * @property {string} name - Display name.
  * @property {Object} [config] - The step's settings, which depend on its type.
  * @property {number} [positionX] - Canvas x position, for a visual builder.

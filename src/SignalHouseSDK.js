@@ -51,6 +51,7 @@ import { Audit } from "./domains/Audit.js";
 import { Contracts } from "./domains/Contracts.js";
 import { Verify } from "./domains/Verify.js";
 import { Compliance } from "./domains/Compliance.js";
+import { Vetting } from "./domains/Vetting.js";
 
 export class SignalHouseSDK {
 	/**
@@ -108,6 +109,8 @@ export class SignalHouseSDK {
 		this.verify = new Verify(client, this.enableAdmin);
 		// Compliance cases under /compliance; staff methods under compliance.admin.
 		this.compliance = new Compliance(client, multipartClient, this.enableAdmin);
+		// Staff-only brand vetting for branded calling under /vetting; every method sits behind enableAdmin.
+		this.vetting = new Vetting(client, this.enableAdmin);
 	}
 
 	/**

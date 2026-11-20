@@ -88,13 +88,14 @@ export class Auth {
 	 * @param {string} [params.attribution.shLanding] - Marketing-site landing page passed on the register link (sh_landing)
 	 * @param {string} [params.attribution.shCta] - Marketing-site CTA that sent the visitor (sh_cta)
 	 * @param {string} [params.attribution.shGuide] - Marketing-site guide the CTA was on (sh_guide)
+	 * @param {string} [params.captchaToken] - A Cloudflare Turnstile token from the Signal House sign-up page. Required for a password sign-up when the API has Turnstile turned on
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @returns {Promise<SdkResponse<any>>} The response from the server (contains the JWT token)
 	 */
-	async register({ businessName, fullName, email, password, oauthTicket, phone, dialCode, country, volume, products, acceptedTermsOfService, psXid, psPartnerKey, attribution, options = {} }) {
+	async register({ businessName, fullName, email, password, oauthTicket, phone, dialCode, country, volume, products, acceptedTermsOfService, psXid, psPartnerKey, attribution, captchaToken, options = {} }) {
 		return this.client(`/auth/register`, {
 			method: "POST",
-			body: { businessName, fullName, email, password, oauthTicket, phone, dialCode, country, volume, products, acceptedTermsOfService, psXid, psPartnerKey, attribution },
+			body: { businessName, fullName, email, password, oauthTicket, phone, dialCode, country, volume, products, acceptedTermsOfService, psXid, psPartnerKey, attribution, captchaToken },
 			...options,
 		});
 	}
