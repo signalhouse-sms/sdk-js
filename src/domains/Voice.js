@@ -9,6 +9,8 @@ import { Tokens } from "./voice/Tokens.js";
 import { Analytics } from "./voice/Analytics.js";
 import { OutboundVoice } from "./voice/OutboundVoice.js";
 import { CallFlows } from "./voice/CallFlows.js";
+import { PushCredentials } from "./voice/PushCredentials.js";
+import { PushDevices } from "./voice/PushDevices.js";
 
 /**
  * Voice domain — wraps the Voice service (mounted under /voice on the
@@ -25,6 +27,8 @@ import { CallFlows } from "./voice/CallFlows.js";
  * - `sdk.voice.callLogs`                  — Account-scoped call history: list/get + presigned recording.
  * - `sdk.voice.globalVoiceSettings`       — Account-wide voice defaults (accepted regions, max spend, E911).
  * - `sdk.voice.tokens`                    — Mint ephemeral SIP credentials for the browser voice SDK.
+ * - `sdk.voice.pushCredentials`           — Mobile push: the Apple/Firebase credentials that wake your app for calls.
+ * - `sdk.voice.pushDevices`               — Mobile push: register a device (called by the app with its voice token).
  * - `sdk.voice.analytics`                 — Aggregated call analytics (summary tiles + byDate/byNumber/byCarrier breakdowns).
  */
 export class Voice {
@@ -42,5 +46,7 @@ export class Voice {
 		this.analytics = new Analytics(client, enableAdmin);
 		this.outboundVoice = new OutboundVoice(client, enableAdmin);
 		this.callFlows = new CallFlows(client, enableAdmin);
+		this.pushCredentials = new PushCredentials(client, enableAdmin);
+		this.pushDevices = new PushDevices(client, enableAdmin);
 	}
 }

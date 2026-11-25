@@ -19,8 +19,8 @@
  * @property {string} [country] - The country for the subgroup's address
  * @property {string} [postalCode] - The postal code for the subgroup's address
  * @property {string} [phone] - The phone number for the subgroup
- * @property {string} [carrierIdFamily] - Optional agency-managed carrier ID selection ("Default", "ATT", "TMobile", "Verizon", "USCellular", "GoogleVoice", "ClearSky", "Interop"). Setting this field requires signalhouse_api, signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
- * @property {string|null} [carrierIdRegion] - Optional ClearSky region ("PRClaro", "GuamDocomo", "GuamGTA", "GuamITE") or null; only valid when carrierIdFamily is "ClearSky". Setting this field requires signalhouse_api, signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
+ * @property {string} [carrierIdFamily] - Deprecated: accepted and stored, with no effect on billing. One of "Default", "ATT", "TMobile", "Verizon", "USCellular", "GoogleVoice", "ClearSky", "Interop". Setting this field requires signalhouse_api, signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
+ * @property {string|null} [carrierIdRegion] - Deprecated: accepted and stored, with no effect on billing. ClearSky region ("PRClaro", "GuamDocomo", "GuamGTA", "GuamITE") or null; only valid when carrierIdFamily is "ClearSky". Setting this field requires signalhouse_api, signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
  */
 
 /**
@@ -38,8 +38,8 @@
  * @property {string} [postalCode] - The postal code for the subgroup's address
  * @property {string} [phone] - The phone number for the subgroup
  * @property {string} [status] - The status of the subgroup (e.g., "active", "inactive")
- * @property {string} [carrierIdFamily] - Optional agency-managed carrier ID selection ("Default", "ATT", "TMobile", "Verizon", "USCellular", "GoogleVoice", "ClearSky", "Interop"). Setting this field requires signalhouse_api, signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
- * @property {string|null} [carrierIdRegion] - Optional ClearSky region ("PRClaro", "GuamDocomo", "GuamGTA", "GuamITE") or null; only valid when carrierIdFamily is "ClearSky". Setting this field requires signalhouse_api, signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
+ * @property {string} [carrierIdFamily] - Deprecated: accepted and stored, with no effect on billing. One of "Default", "ATT", "TMobile", "Verizon", "USCellular", "GoogleVoice", "ClearSky", "Interop". Setting this field requires signalhouse_api, signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
+ * @property {string|null} [carrierIdRegion] - Deprecated: accepted and stored, with no effect on billing. ClearSky region ("PRClaro", "GuamDocomo", "GuamGTA", "GuamITE") or null; only valid when carrierIdFamily is "ClearSky". Setting this field requires signalhouse_api, signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
  * @property {boolean} [cnamAutoApply] - Turn caller name (CNAM) auto-apply on or off: eligible numbers get their brand's registered name as the name shown on outbound calls. Requires signalhouse_api, signalhouse_admin, signalhouse_user, api, admin or developer role.
  * @property {string|null} [cnamBrandId] - Default caller-ID brand for numbers with no campaign (e.g. voice-only). Must be a verified brand in this subgroup; required when turning auto-apply on in a subgroup with more than one verified brand.
  */
@@ -88,13 +88,14 @@ export class Subgroups {
 	 * @param {Object} params - The parameters for getting subgroups
 	 * @param {string} [params.id] - Filter by subgroup ID
 	 * @param {string} [params.groupId] - Filter by parent group ID
+	 * @param {string|string[]} [params.search] - Search terms, each sent as its own `search` key; every term must match. Free text matches subgroupId, subgroupName and subgroupCompanyName; `field:term` searches one of those fields. Each term is 3 to 100 characters, at most 5 terms.
 	 * @param {number} [params.page] - The page number for pagination
 	 * @param {number} [params.limit] - The number of items per page for pagination
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @returns {Promise<SdkResponse<any>>} - The list of subgroups returned from the server
 	 */
-	async getSubgroups({ id, groupId, page, limit, options = {} }) {
-		const filters = { id, groupId, page, limit };
+	async getSubgroups({ id, groupId, search, page, limit, options = {} }) {
+		const filters = { id, groupId, search, page, limit };
 		const queryString = this.client._getQueryString(filters);
 		return this.client(`/subgroup${queryString}`, { method: "GET", ...options });
 	}

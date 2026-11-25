@@ -32,6 +32,20 @@ test("getCases sends only the filters that were given", async () => {
 	assert.equal(calls[1].path, "/compliance/cases");
 });
 
+test("getCases forwards the staff assignee and reviewDue filters", async () => {
+	const { client, multipartClient, calls } = captureClients();
+	const compliance = new Compliance(client, multipartClient);
+	await compliance.getCases({ assignee: "none", reviewDue: true });
+	assert.equal(calls[0].path, "/compliance/cases?assignee=none&reviewDue=true");
+});
+
+test("getCases forwards the staff search, brand, campaign, number and open filters", async () => {
+	const { client, multipartClient, calls } = captureClients();
+	const compliance = new Compliance(client, multipartClient);
+	await compliance.getCases({ q: "apex debt", brandId: "B0000001", campaignId: "C3PW9NE", number: "15125550100", open: false });
+	assert.equal(calls[0].path, "/compliance/cases?q=apex+debt&brandId=B0000001&campaignId=C3PW9NE&number=15125550100&open=false");
+});
+
 test("getCase and getFile read by their encoded ids", async () => {
 	const { client, multipartClient, calls } = captureClients();
 	const compliance = new Compliance(client, multipartClient);
@@ -97,6 +111,8 @@ test("admin methods call the staff routes", async () => {
 	await admin.remindCase({ caseId: "CASE-1" });
 	await admin.addCaseNote({ caseId: "CASE-1", kind: "STAFF", text: "n" });
 	await admin.getStrikes({ groupId: "G1" });
+	await admin.getAccounts({ chips: "waiting,high", days: 30, page: 2, sort: "account" });
+	await admin.getAccounts({ search: ["apex", "groupName:dental"] });
 	assert.deepEqual(calls.map((c) => `${c.request.method} ${c.path}`), [
 		"POST /compliance/alerts",
 		"POST /compliance/alerts/ALR-1/lift",
@@ -111,6 +127,8 @@ test("admin methods call the staff routes", async () => {
 		"POST /compliance/cases/CASE-1/reminder",
 		"POST /compliance/cases/CASE-1/note",
 		"GET /compliance/strikes/G1",
+		"GET /compliance/accounts?chips=waiting%2Chigh&days=30&page=2&sort=account",
+		"GET /compliance/accounts?search=apex&search=groupName%3Adental",
 	]);
 	assert.deepEqual(calls[1].request.body, { note: "Fixed" });
 	assert.deepEqual(calls[7].request.body, { requirements: [{ kind: "CONFIRM", text: "t" }], fixByDays: 3 });

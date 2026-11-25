@@ -303,9 +303,15 @@ BILLING  (signalHouse.billing)
 BRANDS  (signalHouse.brands)
 --------------------------------------------------------------------------------
   getBrands({ id, subgroupId, groupId, page, limit, status, registrationType,
-              currentTollFreeCarrier })
-    List brands with filters. Staff roles listing all brands (no id/subgroupId/groupId) can also
-    pass search, sortBy, sortOrder, entityType, ein, email, referenceId, groupIds, createdFrom,
+              currentTollFreeCarrier, search })
+    List brands with filters.
+    search: a string or an array; each value is sent as its own search key
+    (?search=apex&search=displayName%3Adental) and every value must match. Free text
+    matches brandId, displayName and companyName; on the staff list (no
+    id/subgroupId/groupId) it matches all eight fields below. field:term searches one of
+    brandId, displayName, companyName, ein, email, groupId, subgroupId, referenceId. Each
+    term is 3 to 100 characters, at most 5 terms; a shorter term returns 400.
+    Staff roles listing all brands (no id/subgroupId/groupId) can also pass sortBy, sortOrder, entityType, ein, email, referenceId, groupIds, createdFrom,
     createdTo and excludeDeleted; with both page and limit that list returns
     { data, total, page, limit, totalPages }.
     currentTollFreeCarrier: with subgroupId or groupId, true returns only toll-free brands
@@ -403,8 +409,12 @@ BRANDS  (signalHouse.brands)
 
 CAMPAIGNS  (signalHouse.campaigns)
 --------------------------------------------------------------------------------
-  getCampaigns({ id, brandId, subgroupId, groupId, page, limit, status })
+  getCampaigns({ id, brandId, subgroupId, groupId, page, limit, status, search })
     List campaigns with filters.
+    search: a string or an array; each value is sent as its own search key and every
+    value must match. Free text matches campaignId, or campaignId and brandId on the
+    staff list (no id/brandId/subgroupId/groupId). field:term searches campaignId or
+    brandId. Each term is 3 to 100 characters, at most 5 terms; a shorter term returns 400.
 
   createCampaign({ campaignData })
     Create a new 10DLC campaign.
@@ -522,6 +532,10 @@ MESSAGES  (signalHouse.messages)
     carrierMicros, rated }] }, which is null when it cannot be computed.
     A settled RCS message also carries carrierFeeMicros, the carrier
     pass-through and media surcharge it was charged.
+    Inbound messages also carry inReplyToMessageId: the message the reply
+    answers, absent when there is none. If that message has a
+    parentMessageId, it was an RCS fallback, and the parent is the RCS
+    message you sent.
 
   getMessageInteractions({ id })
     GET /message/:id/interactions. The taps on one RCS message, oldest first. Required: id
@@ -933,9 +947,14 @@ NOTIFICATIONS  (signalHouse.notifications)
 NUMBERS  (signalHouse.numbers)
 --------------------------------------------------------------------------------
   getPhoneNumbers({ phoneNumber, campaignId, registrationId, brandId,
-                    subgroupId, groupId, currentTollFreeCarrier, page, limit })
+                    subgroupId, groupId, currentTollFreeCarrier, search, page, limit })
     List your phone numbers with filters.
     registrationId: filter to numbers provisioned under this registration.
+    search: a string or an array; each value is sent as its own search key and every
+    value must match. Free text matches phoneNumber and friendlyName; field:term searches
+    one of them. A term that reads as a phone number (digits, spaces, + ( ) . -) matches
+    the number's digits, so "(512) 555" finds 15125550100. Each term is 3 to 100
+    characters, at most 5 terms; a shorter term returns 400.
     currentTollFreeCarrier: with subgroupId or groupId, true returns only toll-free numbers
     that a new toll-free campaign in that group can use.
 
@@ -1016,19 +1035,23 @@ SHORTLINKS  (signalHouse.shortlinks)
 
 SUBGROUPS  (signalHouse.subgroups)
 --------------------------------------------------------------------------------
-  getSubgroups({ id, groupId, page, limit })
+  getSubgroups({ id, groupId, search, page, limit })
     List subgroups with filters.
+    search: a string or an array; each value is sent as its own search key and every
+    value must match. Free text matches subgroupId, subgroupName and subgroupCompanyName;
+    field:term searches one of them. Each term is 3 to 100 characters, at most 5 terms;
+    a shorter term returns 400.
 
   createSubgroup({ subgroupData })
     Create a new subgroup.
-    subgroupData may include optional carrierIdFamily and carrierIdRegion.
-    Setting carrierIdFamily or carrierIdRegion requires signalhouse_api,
+    subgroupData may include carrierIdFamily and carrierIdRegion. Deprecated: accepted and
+    stored, with no effect on billing. Setting them requires signalhouse_api,
     signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
 
   updateSubgroup({ id, updateData })
     Update subgroup details.
-    updateData may include optional carrierIdFamily and carrierIdRegion.
-    Setting carrierIdFamily or carrierIdRegion requires signalhouse_api,
+    updateData may include carrierIdFamily and carrierIdRegion. Deprecated: accepted and
+    stored, with no effect on billing. Setting them requires signalhouse_api,
     signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
     updateData may also include cnamAutoApply (boolean) and cnamBrandId (string
     or null): caller name auto-apply and the default caller-ID brand for numbers

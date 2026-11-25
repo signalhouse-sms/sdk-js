@@ -212,7 +212,7 @@ export class Brands {
    * @param {string} [params.status] - The status of the brand to filter by (PENDING_CREATION, PENDING_APPROVAL, UNVERIFIED, VERIFIED, VETTED_VERIFIED, PENDING_DELETE, DELETED)
    * @param {string} [params.registrationType] - Filter by registration type ("TEN_DLC", "TOLL_FREE", or "SHORT_CODE")
    * @param {boolean} [params.currentTollFreeCarrier] - With subgroupId or groupId: when true, return only toll-free brands that a new toll-free campaign in that group can use (those on the group's current toll-free carrier)
-   * @param {string} [params.search] - Staff-only (no id/subgroupId/groupId): case-insensitive substring over brandId, names, EIN, email, group, subgroup and reference ID
+   * @param {string|string[]} [params.search] - Search terms, each sent as its own `search` key; every term must match. With subgroupId or groupId, free text matches brandId, displayName and companyName; on the staff-only list (no id/subgroupId/groupId) it matches brandId, displayName, companyName, ein, email, groupId, subgroupId and referenceId. `field:term` searches one of those eight fields. Each term is 3 to 100 characters, at most 5 terms.
    * @param {string} [params.sortBy] - Staff-only: createdAt, brandId, displayName, groupId, subgroupId, status, entityType or country
    * @param {"asc"|"desc"} [params.sortOrder] - Staff-only: sort direction (default asc)
    * @param {string} [params.entityType] - Staff-only: exact entity type filter

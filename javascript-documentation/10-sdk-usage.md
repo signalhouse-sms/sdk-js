@@ -244,7 +244,7 @@ const transactions = await signalHouse.billing.getTransactionHistory({
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `getBrands` | `{ id, subgroupId, groupId, page, limit, status, registrationType, currentTollFreeCarrier }` | List brands with filters. With `subgroupId` or `groupId`, `currentTollFreeCarrier: true` returns only toll-free brands that a new toll-free campaign in that group can use. Staff roles listing every brand (no id/subgroupId/groupId) may also pass `search`, `sortBy`, `sortOrder`, `entityType`, `ein`, `email`, `referenceId`, `groupIds`, `createdFrom`, `createdTo`, `excludeDeleted`, and get `{ data, total, page, limit, totalPages }` back when paging. A toll-free brand's `tollFree.reviewsBusinessOnSubmit` says whether it's reviewed when it's submitted and keeps its business details from then on; such a brand also carries its `tollFree.businessStructure`, `industry`, `contactEmail`, `contactJobTitle` and `contactJobLevel`, and `tollFree.rejectionReason` (why its review rejected it, in plain English, or null) |
+| `getBrands` | `{ id, subgroupId, groupId, page, limit, status, registrationType, currentTollFreeCarrier, search }` | List brands with filters. With `subgroupId` or `groupId`, `currentTollFreeCarrier: true` returns only toll-free brands that a new toll-free campaign in that group can use. `search` takes a string or an array; each value is sent as its own `search` key and every value must match. Free text matches `brandId`, `displayName` and `companyName`, or all eight fields on the staff list; `field:term` searches one of `brandId`, `displayName`, `companyName`, `ein`, `email`, `groupId`, `subgroupId`, `referenceId`. Each term is 3 to 100 characters, at most 5 terms. Staff roles listing every brand (no id/subgroupId/groupId) may also pass `sortBy`, `sortOrder`, `entityType`, `ein`, `email`, `referenceId`, `groupIds`, `createdFrom`, `createdTo`, `excludeDeleted`, and get `{ data, total, page, limit, totalPages }` back when paging. A toll-free brand's `tollFree.reviewsBusinessOnSubmit` says whether it's reviewed when it's submitted and keeps its business details from then on; such a brand also carries its `tollFree.businessStructure`, `industry`, `contactEmail`, `contactJobTitle` and `contactJobLevel`, and `tollFree.rejectionReason` (why its review rejected it, in plain English, or null) |
 | `createBrand` | `{ brandData }` | Create a new 10DLC brand |
 | `createTollFreeBrand` | `{ brandData }` | Create a new toll-free brand; the toll-free details go under `brandData.tollFree`. When the group's toll-free brands are reviewed on submit (see `getTollFreeRequirements`), `brandData.tollFree` also needs `businessStructure`, `industry`, `contactEmail`, `contactJobTitle` and `contactJobLevel`, `tollFree.countryCode` must be `US` or `CA`, and `state` must be a 2-letter state or province code; any other group gets 400 if it sends any of those five. Such a brand stays `DCA_PENDING` until it's reviewed (usually 1–2 business days), then becomes `DCA_ACTIVE`, or `DCA_REJECTED` with `tollFree.rejectionReason` saying why. Its business details can't be changed after it's submitted, so a rejected brand is fixed by creating it again with the corrections. Returns 202 with the new brand |
 | `getTollFreeRequirements` | `{ groupId }` | Get whether a group's new toll-free brands are reviewed when they're submitted: `{ groupId, reviewsBusinessOnSubmit }`. When `reviewsBusinessOnSubmit` is true, `createTollFreeBrand` needs `tollFree.businessStructure`, `industry`, `contactEmail`, `contactJobTitle` and `contactJobLevel`, a `tollFree.countryCode` of `US` or `CA` and a 2-letter state or province code; when it's false, those five fields are refused |
@@ -289,7 +289,7 @@ await signalHouse.brands.transferBrand({
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `getCampaigns` | `{ id, brandId, subgroupId, groupId, page, limit, status }` | List campaigns with filters |
+| `getCampaigns` | `{ id, brandId, subgroupId, groupId, page, limit, status, search }` | List campaigns with filters. `search` takes a string or an array; each value is sent as its own `search` key and every value must match. Free text matches `campaignId`, or `campaignId` and `brandId` on the staff list (no id/brandId/subgroupId/groupId); `field:term` searches `campaignId` or `brandId`. Each term is 3 to 100 characters, at most 5 terms. |
 | `createCampaign` | `{ campaignData }` | Create a new 10DLC campaign |
 | `updateCampaign` | `{ campaignId, campaignData }` | Update campaign details |
 | `deleteCampaign` | `{ campaignId }` | Delete (soft) a campaign |
@@ -609,7 +609,7 @@ await signalHouse.notifications.deleteNotification({
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `getPhoneNumbers` | `{ phoneNumber, campaignId, brandId, subgroupId, groupId, currentTollFreeCarrier, released, page, limit }` | List your phone numbers with filters. With `subgroupId` or `groupId`, `currentTollFreeCarrier: true` returns only toll-free numbers that a new toll-free campaign in that group can use. With `subgroupId` or `groupId`, `released: true` returns only its released numbers instead of its active ones |
+| `getPhoneNumbers` | `{ phoneNumber, campaignId, brandId, subgroupId, groupId, currentTollFreeCarrier, released, search, page, limit }` | List your phone numbers with filters. With `subgroupId` or `groupId`, `currentTollFreeCarrier: true` returns only toll-free numbers that a new toll-free campaign in that group can use. With `subgroupId` or `groupId`, `released: true` returns only its released numbers instead of its active ones. `search` takes a string or an array; each value is sent as its own `search` key and every value must match. Free text matches `phoneNumber` and `friendlyName`; `field:term` searches one of them. A term that reads as a phone number (digits, spaces, `+ ( ) . -`) matches the number's digits, so `"(512) 555"` finds `15125550100`. Each term is 3 to 100 characters, at most 5 terms. |
 | `getAvailablePhoneNumbers` | `{ smsEnabled, mmsEnabled, voiceEnabled, country, state, npa, nxx, phoneNumber, limit, page }` | Search available numbers for purchase |
 | `purchasePhoneNumber` | `{ phoneNumbers, subgroupId }` | Purchase one or more phone numbers |
 | `updatePhoneNumber` | `{ phoneNumber, updateData }` | Update phone number details (e.g., friendly name) |
@@ -703,13 +703,13 @@ Compliance cases under `/compliance`. Signal House opens a case when a carrier s
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `getCases` | `{ groupId, status, stage, objectType, objectId, subgroupId, suspended, from, to, sort, page, limit }` | `GET /compliance/cases`; your visible cases, newest first. Returns `{ data, total, page, limit, totalPages, counts: { open, waitingOnYou } }`. `stage=customer` lists your open items |
+| `getCases` | `{ groupId, status, stage, objectType, objectId, subgroupId, suspended, from, to, sort, page, limit }` | `GET /compliance/cases`; your visible cases, newest first. Returns `{ data, total, page, limit, totalPages, counts: { open, waitingOnYou } }`. `stage=customer` lists your open items. Staff roles may also pass `q` (an id or part of the account name), `brandId`, `campaignId`, `number` (digits), `open`, `assignee` (a user id, or `none` for unowned) and `reviewDue`, and get `counts: { open, unowned, byStage, overdue, oldestLiftRequestedAt }`; other roles' values are ignored |
 | `getCase` | `{ caseId }` | `GET /compliance/cases/:caseId`; the case with its `stage`, `blocks` (who stopped the traffic), `tickets` and `requirements` |
 | `answerRequirement` | `{ caseId, requirementId, answer, fileIds }` | `PUT /compliance/cases/:caseId/requirements/:requirementId`; a note, files from `uploadFile`, or both. A `RECORDS` requirement needs a file or a note |
 | `uploadFile` | `{ caseId, requirementId, file, fileName }` | `POST /compliance/files` (multipart); CSV, XLSX, PDF, PNG, JPG or TXT up to 10 MB. A CSV/TXT Blob needs `fileName` ending in `.csv`/`.txt`; a named File keeps its name unless overridden. Returns `{ fileId, fileName, mimeType, size }` |
 | `getFile` | `{ fileId }` | `GET /compliance/files/:fileId`; the file bytes as an `ArrayBuffer` |
 
-Staff keys with `enableAdmin: true` also get `compliance.admin`: `logAlert`, `liftBlock`, `getAlerts`, `getAlert`, `triageAlert`, `openCase`, `updateCase`, `sendRequirements`, `requestLift`, `closeCase`, `remindCase`, `addCaseNote` and `getStrikes`. They are for `signalhouse_admin` and `signalhouse_user` only.
+Staff keys with `enableAdmin: true` also get `compliance.admin`: `logAlert`, `liftBlock`, `getAlerts`, `getAlert`, `triageAlert`, `openCase`, `updateCase`, `sendRequirements`, `requestLift`, `closeCase`, `remindCase`, `addCaseNote`, `getStrikes` and `getAccounts`. `getAccounts` lists every active customer account with its risk, open alert counts, messages over 7, 30 or 90 days, and next step, sorted by `next`, `account`, `risk`, `alerts`, `suspended`, `notices` or `messages`. Its `search` takes one value or an array, and every value must match: free text matches the Group ID, group name or company name, and `groupId:`, `groupName:` or `groupCompanyName:` before the text searches that field only, for example `search: ["apex", "groupCompanyName:dental"]`. Each term is 3 to 100 characters. `getAlerts` takes `liftedFrom` to list the blocks lifted since a time. They are for `signalhouse_admin` and `signalhouse_user` only.
 Only `signalhouse_admin` may log or lift a block, including a reading that would create an automatic hold. Staff cannot submit the system-only `NUMBER_RELEASED` close reason.
 
 A successful number release closes its alerts immediately. Eligible cases return `closeReason: "NUMBER_RELEASED"`; shared cases stay open for other alerts, unanswered requirements or review. Released blocks include `numberReleasedAt` without inventing `liftedAt`. Historical strikes remain; strike periods include `endedAt` for a lift or release.
@@ -765,7 +765,7 @@ console.log(result.data.status); // "VERIFIED" | "NOT_VERIFIED" | ...
 
 | Method | Parameters | Description |
 |--------|-----------|-------------|
-| `getSubgroups` | `{ id, groupId, page, limit }` | List subgroups with filters |
+| `getSubgroups` | `{ id, groupId, search, page, limit }` | List subgroups with filters. `search` takes a string or an array; each value is sent as its own `search` key and every value must match. Free text matches `subgroupId`, `subgroupName` and `subgroupCompanyName`; `field:term` searches one of them. Each term is 3 to 100 characters, at most 5 terms. |
 | `createSubgroup` | `{ subgroupData }` | Create a new subgroup |
 | `updateSubgroup` | `{ id, updateData }` | Update subgroup details |
 | `deleteSubgroup` | `{ id }` | Delete (deactivate) a subgroup |
@@ -778,25 +778,20 @@ const subgroups = await signalHouse.subgroups.getSubgroups({
   limit: 25,
 });
 
-// Create a subgroup. carrierIdFamily/carrierIdRegion require signalhouse_api,
-// signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
+// Create a subgroup. carrierIdFamily/carrierIdRegion are deprecated: accepted
+// and stored, with no effect on billing.
 const newSubgroup = await signalHouse.subgroups.createSubgroup({
   subgroupData: {
     groupId: "G0000001",
     subgroupName: "Marketing Team",
-    carrierIdFamily: "ClearSky",
-    carrierIdRegion: "PRClaro",
   },
 });
 
-// Update a subgroup. carrierIdFamily/carrierIdRegion require signalhouse_api,
-// signalhouse_admin, signalhouse_user, api, admin, developer, or billing role.
+// Update a subgroup
 await signalHouse.subgroups.updateSubgroup({
   id: "SG0000001",
   updateData: {
     subgroupName: "Updated Marketing Team",
-    carrierIdFamily: "Default",
-    carrierIdRegion: null,
   },
 });
 

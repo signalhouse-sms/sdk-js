@@ -336,7 +336,7 @@ export class Campaigns {
    * @param {number} [params.page] - The page number for pagination
    * @param {number} [params.limit] - The number of items per page
    * @param {string} [params.status] - The status of the campaign to filter by
-   * @param {string} [params.search] - Search term to filter campaigns by campaignId or brandId
+   * @param {string|string[]} [params.search] - Search terms, each sent as its own `search` key; every term must match. With brandId, subgroupId or groupId, free text matches campaignId; on the staff-only list (no id/brandId/subgroupId/groupId) it matches campaignId and brandId. `field:term` searches campaignId or brandId. Each term is 3 to 100 characters, at most 5 terms.
    * @param {string} [params.sortBy] - Field to sort by (e.g. "createdAt", "campaignId", "brandId", "groupId", "subgroupId", "usecase", "status")
    * @param {string} [params.sortOrder] - Sort direction ("asc" or "desc")
    * @param {string} [params.registrationType] - Filter by registration type ("TEN_DLC", "TOLL_FREE", or "SHORT_CODE")

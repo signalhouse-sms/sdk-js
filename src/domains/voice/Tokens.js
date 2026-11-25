@@ -17,6 +17,7 @@
  * @typedef {Object} CreateTokenData
  * @property {string} [identity] - Customer-facing logical identity name (e.g. "alice"). Persisted as `requested_identity` so server-initiated `calls.create({to_identity: "alice"})` can resolve it later. Defaults to "anonymous".
  * @property {number} [ttl] - Token TTL in seconds. Clamped to the server's max. Defaults to VOICE_TOKEN_DEFAULT_TTL_SEC.
+ * @property {string} [subgroupId] - The subgroup whose inbound calls should ring this identity. Required to receive calls (and to register the device for mobile push).
  * @property {VoiceGrants} [grants] - Capability grants attached to the token.
  */
 

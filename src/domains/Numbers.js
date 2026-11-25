@@ -88,6 +88,7 @@ export class Numbers {
    * @param {string} [params.groupId] - Filter by group ID
    * @param {boolean} [params.currentTollFreeCarrier] - With subgroupId or groupId: when true, return only toll-free numbers that a new toll-free campaign in that group can use (those on the group's current toll-free carrier)
    * @param {boolean} [params.released] - With subgroupId or groupId: when true, return only its released numbers (status RELEASED) instead of its active ones
+   * @param {string|string[]} [params.search] - Search terms, each sent as its own `search` key; every term must match. Free text matches phoneNumber and friendlyName; `field:term` searches one of those fields. A term that reads as a phone number (digits, spaces, + ( ) . -) matches the number's digits, so "(512) 555" finds 15125550100. Each term is 3 to 100 characters, at most 5 terms.
    * @param {number} [params.page] - The page number for pagination (default: 1)
    * @param {number} [params.limit] - The number of items per page for pagination (default: 20)
    * @param {RequestOptions} [params.options] - Additional options for the request
@@ -110,8 +111,8 @@ export class Numbers {
    * or GET /campaign/health.
    * @returns {Promise<SdkResponse<any>>} A promise that resolves to the list of phone numbers
    */
-  async getPhoneNumbers({ phoneNumber, campaignId, registrationId, brandId, subgroupId, groupId, currentTollFreeCarrier, released, page, limit, options = {} }) {
-    const filters = { phoneNumber, campaignId, registrationId, brandId, subgroupId, groupId, currentTollFreeCarrier, released, page, limit };
+  async getPhoneNumbers({ phoneNumber, campaignId, registrationId, brandId, subgroupId, groupId, currentTollFreeCarrier, released, search, page, limit, options = {} }) {
+    const filters = { phoneNumber, campaignId, registrationId, brandId, subgroupId, groupId, currentTollFreeCarrier, released, search, page, limit };
     const queryString = this.client._getQueryString(filters);
     return this.client(`/number${queryString}`, { method: 'GET', ...options });
   }

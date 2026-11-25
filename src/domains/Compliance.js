@@ -55,19 +55,44 @@ export class Compliance {
 				},
 
 				/**
-				 * List alerts, with the inbox counts.
+				 * List alerts, newest received first. Each row carries `case: { caseId, status, stage, assigneeUserId, suspended }`,
+				 * or null with no case. `counts` follows every filter except open, inbox, assignee, suspended and severity.
 				 * @async
 				 * @roles signalhouse_admin, signalhouse_user
-				 * @param {Object} [params] - Filters: type, form, severity, channel, source, subjectKind, subjectId, number, groupId, subgroupId, campaignId, caseId, inbox, open, blocks, slackPending, from, to, page, limit
+				 * @param {Object} [params] - Filters: q (an id, a number or part of the account name, up to 100 characters), type,
+				 *   form, severity (one value or a comma list), channel, source, subjectKind, subjectId, number, groupId,
+				 *   subgroupId, brandId, campaignId, caseId, assignee (a user id, or "none"), suspended, inbox, open, blocks,
+				 *   slackPending, from, to, liftedFrom (blocks lifted on or after this time), page, limit
 				 * @param {RequestOptions} [params.options] - Additional options for the request
-				 * @returns {Promise<SdkResponse<any>>} A promise that resolves to `{ data, total, page, limit, totalPages, counts: { inCase, inbox, noted } }`
+				 * @returns {Promise<SdkResponse<any>>} A promise that resolves to `{ data, total, page, limit, totalPages, counts: { all, open,
+				 *   mine, unowned, suspended, resolved, inbox, accounts, openBySeverity, unownedBySeverity } }`
 				 */
 				getAlerts: async ({ options = {}, ...filters } = {}) => {
 					return this.client(`/compliance/alerts${this.client._getQueryString(filters)}`, { method: "GET", ...options });
 				},
 
 				/**
-				 * Get one alert with its raw payload, escalation chain, case summary and timeline.
+				 * List every active customer account, plus any group with open compliance work, with its risk, open alert counts,
+				 * outbound message count over a window and Signal House's next step. Without groupId, channel keeps the accounts with
+				 * an open alert on it; subgroupId, brandId, campaignId and number need a groupId and then narrow that account's
+				 * counts. Risk always covers the whole account. `counts` holds each chip's total over the searched rows.
+				 * @async
+				 * @roles signalhouse_admin, signalhouse_user
+				 * @param {Object} [params] - Filters: search (a string or an array of strings, every one must match; each is free text
+				 *   or `field:term` for groupId, groupName or groupCompanyName, 3 to 100 characters, at most 5), sort (next, account,
+				 *   risk, alerts, suspended, notices or messages), sortOrder (asc or desc), chips (a comma list of waiting, suspended, high, notices, review, inbox),
+				 *   days (7, 30 or 90), groupId, subgroupId, brandId, campaignId, number, channel, page, limit
+				 * @param {RequestOptions} [params.options] - Additional options for the request
+				 * @returns {Promise<SdkResponse<any>>} A promise that resolves to `{ data, total, page, limit, totalPages, days, counts: { waiting,
+				 *   suspended, high, notices, review, inbox } }`; each row is `{ groupId, accountName, createdAt, risk, openAlerts, critical,
+				 *   suspended, notices, inbox, reviewDue, messages, nextStep }`
+				 */
+				getAccounts: async ({ options = {}, ...filters } = {}) => {
+					return this.client(`/compliance/accounts${this.client._getQueryString(filters)}`, { method: "GET", ...options });
+				},
+
+				/**
+				 * Get one alert with its escalation chain, case summary and timeline.
 				 * @async
 				 * @roles signalhouse_admin, signalhouse_user
 				 * @param {Object} params - The lookup
@@ -223,7 +248,9 @@ export class Compliance {
 	}
 
 	/**
-	 * List the compliance cases you can see, newest first. `counts.waitingOnYou` is the open cases with requirements still to answer
+	 * List the compliance cases you can see, newest first. `counts.waitingOnYou` is the open cases with requirements still to answer.
+	 * Staff get `counts: { open, unowned, byStage, overdue, oldestLiftRequestedAt }` instead, which follows every filter except
+	 * status, stage and open
 	 * @async
 	 * @roles api, admin, developer, billing, user
 	 * @param {Object} [params] - Filters
@@ -234,16 +261,23 @@ export class Compliance {
 	 * @param {string} [params.objectId] - The object's id
 	 * @param {string} [params.subgroupId] - Only cases in this subgroup
 	 * @param {boolean} [params.suspended] - true for cases with an open suspension or hold, false for the rest
+	 * @param {string} [params.q] - Staff only: a case, group, object, brand, campaign or subgroup id, or part of the account name, up to 100 characters. Ignored for other roles
+	 * @param {string} [params.brandId] - Staff only: only cases on this brand. Ignored for other roles
+	 * @param {string} [params.campaignId] - Staff only: only cases on this campaign. Ignored for other roles
+	 * @param {string} [params.number] - Staff only: digits with the country code; the number's own case and the cases holding an alert on it. Ignored for other roles
+	 * @param {boolean} [params.open] - Staff only: true for cases that are not closed, false for closed cases. Ignored for other roles
+	 * @param {string} [params.assignee] - Staff only: the owner's user id, or "none" for unowned cases. Ignored for other roles
+	 * @param {boolean} [params.reviewDue] - Staff only: true for cases flagged for account review, false for the rest. Ignored for other roles
 	 * @param {string} [params.from] - Opened on or after this ISO 8601 time
 	 * @param {string} [params.to] - Opened on or before this ISO 8601 time
 	 * @param {string} [params.sort] - createdAt (default), fixBy or severity
 	 * @param {number} [params.page] - Page number, from 1
 	 * @param {number} [params.limit] - Cases per page, 1-200
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to `{ data, total, page, limit, totalPages, counts: { open, waitingOnYou } }`
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to `{ data, total, page, limit, totalPages, counts }`
 	 */
-	async getCases({ groupId, status, stage, objectType, objectId, subgroupId, suspended, from, to, sort, page, limit, options = {} } = {}) {
-		const query = this.client._getQueryString({ groupId, status, stage, objectType, objectId, subgroupId, suspended, from, to, sort, page, limit });
+	async getCases({ groupId, status, stage, objectType, objectId, subgroupId, suspended, q, brandId, campaignId, number, open, assignee, reviewDue, from, to, sort, page, limit, options = {} } = {}) {
+		const query = this.client._getQueryString({ groupId, status, stage, objectType, objectId, subgroupId, suspended, q, brandId, campaignId, number, open, assignee, reviewDue, from, to, sort, page, limit });
 		return this.client(`/compliance/cases${query}`, { method: "GET", ...options });
 	}
 

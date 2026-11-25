@@ -92,6 +92,8 @@ export class Messages {
 	 * @returns {Promise<SdkResponse<any>>} - A promise that resolves to the list of messages. Inbound messages also carry
 	 * sentimentScore (-100..100, null when unscored), sentimentLabel ("positive"|"neutral"|"negative", null when
 	 * sentimentScore is null) and sentimentScoredAt. Outbound messages are never scored.
+	 * Inbound messages also carry inReplyToMessageId: the message the reply answers, absent when there is none. If that
+	 * message has a parentMessageId, it was an RCS fallback, and the parent is the RCS message you sent.
 	 */
 	async getMessages({
 		id,
@@ -142,7 +144,7 @@ export class Messages {
 	 * @param {string} params.id - The message ID
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @throws {Error} Throws an error if the id parameter is missing
-	 * @returns {Promise<SdkResponse<any>>} - A promise that resolves to the message; an unknown ID is a 404. An RCS message and its fallback leg also carry `costBreakdown`: `{ legs: [{ messageId, channel, billed, billingClass, segments, baseMicros, carrierMicros, rated }] }`, null when it cannot be computed. A settled RCS message also carries `carrierFeeMicros`: the carrier pass-through and media surcharge it was charged
+	 * @returns {Promise<SdkResponse<any>>} - A promise that resolves to the message; an unknown ID is a 404. An RCS message and its fallback leg also carry `costBreakdown`: `{ legs: [{ messageId, channel, billed, billingClass, segments, baseMicros, carrierMicros, rated }] }`, null when it cannot be computed. A settled RCS message also carries `carrierFeeMicros`: the carrier pass-through and media surcharge it was charged. Inbound messages also carry `inReplyToMessageId`: the message the reply answers, absent when there is none. If that message has a `parentMessageId`, it was an RCS fallback, and the parent is the RCS message you sent
 	 */
 	async getMessage({ id, options = {} }) {
 		this.client._require({ id });
@@ -499,6 +501,7 @@ export class Messages {
 	 *   true server-side (the SignalHouse shortlink system, which mints unique per-recipient links).
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @returns {Promise<SdkResponse<any>>} - A promise that resolves to the response data from the server
+	 * @deprecated P2P messaging is retired and the API answers 410. This method will be removed in a future major release.
 	 */
 	async sendP2P({ recipientPhoneNumbers, messageBody, statusCallbackUrl, groupId, subgroupId, useSignalHouseShortlinks, options = {} }) {
 		this.client._require({ recipientPhoneNumbers, messageBody });
@@ -523,6 +526,7 @@ export class Messages {
 	 * @param {RequestOptions} [params.options] - Additional options for the request
 	 * @throws {Error} Throws an error if the batchId parameter is missing
 	 * @returns {Promise<SdkResponse<any>>} - The P2P batch object returned from the server
+	 * @deprecated P2P messaging is retired and the API answers 410. This method will be removed in a future major release.
 	 */
 	async getP2PBatch({ batchId, options = {} }) {
 		this.client._require({ batchId });

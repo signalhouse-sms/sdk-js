@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { Registrations } from "../src/domains/Registrations.js";
 import { Messages } from "../src/domains/Messages.js";
 import { Numbers } from "../src/domains/Numbers.js";
+import { Subgroups } from "../src/domains/Subgroups.js";
 import { Brands } from "../src/domains/Brands.js";
 import { Onboarding } from "../src/domains/Onboarding.js";
 import { Audit } from "../src/domains/Audit.js";
@@ -279,6 +280,24 @@ test("getPhoneNumbers forwards registrationId", async () => {
 	assert.equal(pathname(calls[0].path), "/number");
 	assert.equal(params(calls[0].path).get("registrationId"), "REG1");
 	assert.equal(params(calls[0].path).get("campaignId"), "C1");
+});
+
+test("getPhoneNumbers sends each search value as its own search key", async () => {
+	const { client, calls } = captureClient();
+	await new Numbers(client).getPhoneNumbers({ groupId: "G0000001", search: ["(512) 555", "friendlyName:front desk"] });
+	assert.equal(calls[0].path, "/number?groupId=G0000001&search=%28512%29+555&search=friendlyName%3Afront+desk");
+	assert.deepEqual(params(calls[0].path).getAll("search"), ["(512) 555", "friendlyName:front desk"]);
+});
+
+test("getSubgroups forwards search and leaves it out when not given", async () => {
+	const { client, calls } = captureClient();
+	const domain = new Subgroups(client);
+	await domain.getSubgroups({ groupId: "G0000001", search: "apex" });
+	await domain.getSubgroups({ groupId: "G0000001", search: ["apex", "subgroupName:dental"] });
+	await domain.getSubgroups({ groupId: "G0000001" });
+	assert.equal(calls[0].path, "/subgroup?groupId=G0000001&search=apex");
+	assert.equal(calls[1].path, "/subgroup?groupId=G0000001&search=apex&search=subgroupName%3Adental");
+	assert.equal(calls[2].path, "/subgroup?groupId=G0000001");
 });
 
 test("getPhoneNumbers forwards currentTollFreeCarrier and leaves it out when not given", async () => {

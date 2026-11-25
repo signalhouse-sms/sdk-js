@@ -30,17 +30,21 @@ export class Groups {
 				},
 
 				/**
-				 * Get a list of all groups with optional pagination parameters
+				 * Get a list of all groups with optional pagination and search
 				 * @async
 				 * @roles signalhouse
 				 * @param {Object} params - The parameters for getting groups
 				 * @param {number} [params.page] - The page number for pagination
 				 * @param {number} [params.limit] - The number of items per page
+				 * @param {string|string[]} [params.search] - One value or several, every one must match. Each is free text, found in
+				 *   the Group ID, group name or company name, or `field:term` to search groupId, groupName or groupCompanyName only.
+				 *   Each term is 3 to 100 characters, and at most 5 values
+				 * @param {boolean} [params.includeTotal] - With page and limit, return `{ data, total, page, limit, totalPages }`
 				 * @param {RequestOptions} [params.options] - Additional options for the request
-				 * @returns {Promise<SdkResponse<any>>} - The list of groups returned from the server
+				 * @returns {Promise<SdkResponse<any>>} - The list of groups returned from the server, or the envelope with includeTotal
 				 */
-				getGroups: async ({ page, limit, options = {} }) => {
-					const filters = { page, limit };
+				getGroups: async ({ page, limit, search, includeTotal, options = {} }) => {
+					const filters = { page, limit, search, includeTotal };
 					const queryString = this.client._getQueryString(filters);
 					return this.client(`/group${queryString}`, { method: "GET", ...options });
 				},

@@ -552,7 +552,7 @@ export class RcsMessages {
 	 * @param {Object} params - The lookup
 	 * @param {string} params.messageId - The message ID
 	 * @param {RequestOptions} [params.options] - Additional options for the request
-	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the message; an unknown ID is a 404. A settled RCS message carries carrierFeeMicros, the carrier pass-through and media surcharge it was charged
+	 * @returns {Promise<SdkResponse<any>>} A promise that resolves to the message; an unknown ID is a 404. A settled RCS message carries carrierFeeMicros, the carrier pass-through and media surcharge it was charged. An inbound RCS message also carries inReplyToMessageId: the message it answers, absent when there is none
 	 */
 	async get({ messageId, options = {} }) {
 		this.client._require({ messageId });
