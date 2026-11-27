@@ -105,8 +105,8 @@
  * @typedef {Object} CreateTollFreeCampaignData
  * @property {string} brandId - The ID of the Toll-Free brand associated with the campaign (required, at least 7 characters)
  * @property {TollFreeCampaignDetails} tollFree - The Toll-Free campaign details (required)
- * @property {string} [privacyPolicyLink] - A URL linking to the privacy policy (at most 2048 characters). Required when the brand's `tollFree.requiresPrivacyPolicy` is true and the brand has no `privacyPolicyLink` of its own; optional otherwise.
- * @property {string} [termsAndConditionsLink] - A URL linking to the terms and conditions (at most 2048 characters). Required when the brand's `tollFree.requiresTermsAndConditions` is true and the brand has no `termsAndConditionsLink` of its own; optional otherwise.
+ * @property {string} [privacyPolicyLink] - A URL linking to the privacy policy (at most 2048 characters). Required when the brand's `tollFree.requiresPrivacyPolicy` is true and neither the brand nor the referenced Toll-Free landing page (`tollFree.landingId`) supplies one; optional otherwise. Precedence: campaign, brand, landing page.
+ * @property {string} [termsAndConditionsLink] - A URL linking to the terms and conditions (at most 2048 characters). Required when the brand's `tollFree.requiresTermsAndConditions` is true and neither the brand nor the referenced Toll-Free landing page supplies one; optional otherwise.
  * @property {string} [tag] - A tag for the campaign (optional, at most 255 characters)
  * @property {boolean} [autoRenewal=true] - Whether the campaign should auto-renew (optional, defaults to true)
  * @property {Array<string>} phoneNumbers - The Toll-Free numbers to assign to the campaign (required, 1 up to the brand's tollFree.maxNumbersPerCampaign and at most 5, each at least 10 digits and digits only). The numbers must be on the brand's toll-free carrier, or the campaign is refused. Numbers are locked to the campaign once assigned and cannot be moved or added afterward.
